@@ -1,0 +1,99 @@
+/*
+ * 숨비투어 디자인 토큰
+ * 출처: Claude Design 캔버스 「숨비투어 디자인」 > 디자인 토큰 화면
+ *       https://claude.ai/artifact/UvLLCUaZkT1RYBTM3PHTpD
+ * 기록일: 2026-11-08
+ *
+ * 화면 구현 SPEC에서 src/ 아래 전역 스타일로 옮겨 사용한다.
+ * Tailwind 버전과 테마 연결 방식은 SPEC-INFRA-001에서 확정된 설정을 따른다.
+ * 캔버스를 수정하면 이 파일도 함께 갱신한다.
+ */
+
+:root {
+  /* 색 · 기본 (포인트 색은 accent 하나) */
+  --color-accent: #00737a; /* 흰 글자 대비 5.63:1 */
+  --color-accent-hover: #005a60;
+  --color-accent-tint: #e6f3f2;
+  --color-bg: #ffffff;
+  --color-surface: #f3f8f8;
+  --color-text: #1a2b2e; /* 흰 배경 대비 14.70:1 */
+  --color-text-2: #4f6168; /* 흰 배경 대비 6.48:1 */
+  --color-divider: #d5dfe1; /* 장식용 구분선 */
+  --color-input-border: #7c8e93; /* UI 대비 3.42:1 */
+  --overlay-photo: rgba(26, 43, 46, 0.6); /* 실제 사진 확정 후 대비 재측정 */
+
+  /* 색 · 상태 (글자 / 배경) — 색만으로 구분하지 않고 아이콘·글자를 함께 쓴다 */
+  --status-open-fg: #0b6b4f; /* 모집 중 5.69:1 */
+  --status-open-bg: #e2f4ec;
+  --status-closed-fg: #4a5358; /* 마감 6.81:1 */
+  --status-closed-bg: #eceff1;
+  --status-pending-fg: #8a5000; /* 대기 5.90:1 */
+  --status-pending-bg: #fff3d6;
+  --status-confirmed-fg: #1d5fa8; /* 확정 5.56:1 */
+  --status-confirmed-bg: #e6effb;
+  --status-canceled-fg: #b3261e; /* 취소 · 입력 오류 5.72:1 */
+  --status-canceled-bg: #fdecea;
+
+  /* 관리자 대시보드 전용 회색 (Payload 관리자 화면 톤) */
+  --admin-text: #222222;
+  --admin-text-2: #5c5c66;
+  --admin-border: #e2e2e4;
+  --admin-bg: #f4f4f5;
+
+  /* 글꼴 */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Segoe UI", Roboto,
+    sans-serif;
+
+  /* 글자 크기 (PC 기준, 모바일 값은 아래 미디어 쿼리) */
+  --text-display: 48px; /* 700 · 1.25 */
+  --text-h1: 36px; /* 700 · 1.3 */
+  --text-h2: 28px; /* 700 · 1.35 */
+  --text-h3: 20px; /* 700/600 · 1.4 */
+  --text-body: 16px; /* 400/500 · 1.6 */
+  --text-small: 14px; /* 400 · 1.6 */
+  --text-caption: 13px; /* 600 · 1.5, 배지 */
+
+  /* 간격 (4px 단위) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --section-y: 96px; /* 섹션 위아래 여백 */
+  --page-x: 24px; /* 좌우 여백 */
+
+  /* 모서리 · 그림자 */
+  --radius-sm: 8px; /* 버튼 · 입력창 */
+  --radius-md: 12px; /* 카드 */
+  --radius-lg: 16px; /* 패널 */
+  --radius-pill: 999px; /* 배지 */
+  --shadow-sm: 0 4px 16px rgba(26, 43, 46, 0.06);
+
+  /* 크기 */
+  --content-max: 1200px;
+  --button-height: 48px;
+  --touch-min: 44px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --text-display: 32px;
+    --text-h1: 26px;
+    --text-h2: 22px;
+    --text-h3: 18px;
+    --text-caption: 12px;
+    --section-y: 40px;
+    --page-x: 16px;
+  }
+}
+
+/* 포커스 표시: 2px accent + 2px 간격 */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
