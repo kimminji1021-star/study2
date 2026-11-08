@@ -222,7 +222,7 @@ AC-INFRA-012 → AC-INFRA-013 → AC-INFRA-014 → AC-INFRA-015 순서로 실행
 ### M6 — 린트·포맷 범위·줄바꿈·스크립트 (우선순위: Low)
 
 - `eslint.config.mjs`: `eslint-config-next/core-web-vitals` + `eslint-config-next/typescript` + `eslint-config-prettier/flat`. `globalIgnores`와 `.prettierignore`는 `spec.md` §2.5 **검사 제외 목록**을 하나의 규칙으로 똑같이 담는다(글롭 표기만 도구에 맞게 바꿈 — ESLint는 `dir/**`, Prettier는 `dir/`). 공통 목록: `.claude/`, `.moai/`, `.github/`, `.git_hooks/`, `CLAUDE.md`, `.mcp.json`, `.claudeignore`, `.worktreeinclude`, `*.md`, `src/payload-types.ts`, `src/app/(payload)/admin/importMap.js`, `next-env.d.ts`, `pnpm-lock.yaml`, `.next/`, `out/`, `build/`, `coverage/`, `playwright-report/`, `test-results/`. 저장소 규칙 테스트(AC-INFRA-010)가 두 파일을 같은 목록과 대조한다
-- `lint` 스크립트는 검사 대상 경로를 명시한다(예: `eslint src tests *.ts *.mjs *.mts`). `format`·`format:check`는 `prettier --write .` / `prettier --check .`와 `.prettierignore`로 범위를 제한한다
+- `lint` 스크립트는 검사 대상 경로를 명시한다(예: `eslint src tests scripts *.ts *.mjs *.mts`). `format`·`format:check`는 `prettier --write .` / `prettier --check .`와 `.prettierignore`로 범위를 제한한다
 - `.prettierignore`: 위 공통 목록과 같은 항목(별도 목록을 따로 관리하지 않음)
 - Prettier 설정(`endOfLine: "lf"`), `.gitattributes`: `* text=auto eol=lf`
 - 스크립트 최종 정리: `dev`, `build`, `start`, `test`, `e2e`, `lint`, `format`, `format:check`, `typecheck`, `generate:types`, `generate:importmap`(모두 `cross-env` 사용, `rm -rf`·인라인 대입 없음)

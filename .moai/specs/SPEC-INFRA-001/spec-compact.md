@@ -1,12 +1,12 @@
 # SPEC-INFRA-001 (compact) — 프로젝트 기반 구축
 
 > run 단계용 요약본. 원본: `spec.md`(요구사항·용어), `acceptance.md`(수용 기준), `plan.md`(버전·마일스톤·위험). 내용이 다르면 원본이 우선한다.
-> Tier M · status: draft · 문서 버전 0.1.1 · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 / 7
+> Tier M · status: draft · 문서 버전 0.1.2 · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 / 7
 
 ## 용어 (spec.md §2.5)
 
 - **정식 안정 버전**: 사전 배포 식별자 없음 + 메이저 1 이상. 직접 의존성에만 적용.
-- **검사 대상 코드**: `src/`, `tests/`, 루트 JS·TS·JSON·CSS 설정 파일. **검사 제외 목록**(린트·포맷 무시 설정이 똑같이 담음): MoAI 소유 `.claude/`, `.moai/`, `.github/`, `.git_hooks/`, `CLAUDE.md`, `.mcp.json`, `.claudeignore`, `.worktreeinclude` · `*.md` · 생성 파일(`src/payload-types.ts`, `importMap.js`, `next-env.d.ts`, `pnpm-lock.yaml`) · 산출물(`.next/`, `out/`, `build/`, `coverage/`, `playwright-report/`, `test-results/`).
+- **검사 대상 코드**: `src/`, `tests/`, `scripts/`, 루트 JS·TS·JSON·CSS·YAML 설정 파일(ESLint는 JS·TS만, Prettier는 전체). **검사 제외 목록**(린트·포맷 무시 설정이 똑같이 담음): MoAI 소유 `.claude/`, `.moai/`, `.github/`, `.git_hooks/`, `CLAUDE.md`, `.mcp.json`, `.claudeignore`, `.worktreeinclude` · `*.md` · 생성 파일(`src/payload-types.ts`, `importMap.js`, `next-env.d.ts`, `pnpm-lock.yaml`) · 산출물(`.next/`, `out/`, `build/`, `coverage/`, `playwright-report/`, `test-results/`).
 
 ## 요구사항 (GEARS)
 
@@ -42,7 +42,7 @@
 | AC-INFRA-007 | (수동) 빈 DB에서 `/admin` → `/admin/create-first-user` → 생성 후 `/admin` |
 | AC-INFRA-008 | `pnpm e2e` 종료 0; `/` 200, `h1`에 `숨비투어`, `준비 중` 문구, Tailwind 계산 스타일; 로그인 폼; 테스트 계정 로그인 → `/admin`; `new URL(page.url()).port`가 E2E 포트와 같고 `'3000'` 아님을 단언 |
 | AC-INFRA-009 | 규칙 테스트: `@import "tailwindcss"` 파일·import 위치 1건 이상이고 모두 `(frontend)`; `(payload)` 참조 0건 |
-| AC-INFRA-010 | `pnpm lint`·`pnpm format:check` 종료 0; 규칙 테스트로 §2.5 검사 제외 목록이 `.prettierignore`·`globalIgnores` 양쪽에 동일·`eslint-config-prettier`; `.moai/` 임시 파일은 무시되고 `src/` 임시 파일은 실패(대조); `i/crlf` 0건·`i/lf` 1건 이상 |
+| AC-INFRA-010 | `pnpm lint`·`pnpm format:check` 종료 0; 규칙 테스트로 §2.5 검사 제외 목록이 `.prettierignore`·`globalIgnores` 양쪽에 동일·`eslint-config-prettier`; `.moai/` 임시 파일은 무시되고 `src/`·`scripts/` 임시 파일은 실패(대조); `i/crlf` 0건·`i/lf` 1건 이상 |
 | AC-INFRA-011 | 규칙 테스트: `.env.example` 줄 1개 이상 모두 `^[A-Z][A-Z0-9_]*=$`, 필수 이름 존재; `git check-ignore -q .env` 0, `.env.example` 1 |
 | AC-INFRA-012 | `PAYLOAD_SECRET` 제거 → `Measure-Command`로 `pnpm dev`·`pnpm test` 각 30초 미만·`$LASTEXITCODE` ≠ 0, 로그에 `PAYLOAD_SECRET`·`.env.example`, `Ready`/`Local:` 0건, 비밀번호 0건; 단위 테스트 4가지 조합 |
 | AC-INFRA-013 | 포트 변수 5433 → `docker compose port postgres 5432`가 `:5433`, `git diff --exit-code -- docker-compose.yml` 0, AC-006 통과 |

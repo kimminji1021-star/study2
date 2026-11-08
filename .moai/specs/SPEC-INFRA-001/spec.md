@@ -1,7 +1,7 @@
 ---
 id: SPEC-INFRA-001
 title: "프로젝트 기반 구축 — Next.js + Payload CMS 단일 앱 골격과 로컬 개발·테스트 환경"
-version: "0.1.1"
+version: "0.1.2"
 status: draft
 created: 2026-11-08
 updated: 2026-11-08
@@ -22,6 +22,7 @@ tier: M
 |---|---|---|---|
 | 0.1.0 | 2026-11-08 | study2 (manager-spec) | 최초 작성 — `product.md` §7 로드맵 1번 항목 "프로젝트 기반 구축" |
 | 0.1.1 | 2026-11-08 | study2 (manager-spec) | plan-audit 1~2회차 지적 반영 — 1회차 D1~D13(셸 안전 검증, 검사 범위, 순차 검증, 조항별 AC, `.gitignore` 실제 상태, Node 범위 교집합 등), 2회차 N1~N8(제외 목록 단일화, DB 전제 명시, E2E 포트 단언, 측정 방식 통일, 시스템 컬렉션 필터). 서비스 가칭을 "숨비투어"로 변경 |
+| 0.1.2 | 2026-11-08 | study2 (orchestrator) | plan-audit 3회차 N9 반영 — "검사 대상 코드"에 `scripts/`와 루트 YAML 설정 파일 포함, `lint` 예시에 `scripts` 추가, AC-INFRA-010에 `scripts/` 대조 확인 추가 |
 
 ## 1. 개요
 
@@ -71,7 +72,7 @@ tier: M
 ### 2.5 용어
 
 - **정식 안정 버전**: 사전 배포 식별자(`-alpha`, `-beta`, `-canary`, `-rc`, `-preview` 등)가 없고 메이저 버전이 1 이상인 버전. 이 정의는 `package.json`에 직접 적는 의존성에 적용하고, 간접 의존성에는 적용하지 않는다.
-- **검사 대상 코드**: `src/`, `tests/`, 그리고 저장소 루트의 JavaScript·TypeScript·JSON·CSS 설정 파일. 다음 **검사 제외 목록**은 포함하지 않으며, 린트와 포맷 검사의 무시 설정은 이 목록 전체를 똑같이 담는다.
+- **검사 대상 코드**: `src/`, `tests/`, `scripts/`, 그리고 저장소 루트의 JavaScript·TypeScript·JSON·CSS·YAML 설정 파일(`docker-compose.yml`, `pnpm-workspace.yaml` 포함). 린트(ESLint)는 이 중 JavaScript·TypeScript 파일을, 포맷 검사(Prettier)는 전체를 검사한다. 다음 **검사 제외 목록**은 포함하지 않으며, 린트와 포맷 검사의 무시 설정은 이 목록 전체를 똑같이 담는다.
   - MoAI 소유 경로: `.claude/`, `.moai/`, `.github/`, `.git_hooks/`, `CLAUDE.md`, `.mcp.json`, `.claudeignore`, `.worktreeinclude`
   - 문서: 모든 Markdown 파일(`*.md`)
   - 생성 파일: `src/payload-types.ts`, 관리자 `importMap.js`, `next-env.d.ts`, `pnpm-lock.yaml`
