@@ -1,0 +1,23 @@
+# .moai/project/harness-spec.yaml — machine-readable harness generation input
+# Generated from .moai/project/interview.md by /moai project (Phase 8). Overwritten on re-run.
+
+domain: "web-app: tour-booking landing page with CMS-backed admin"
+goal: "Present multiple tour programs at a travel destination, accept applications online, and let an admin review and manage applicants — on free-tier infrastructure."
+constraints:
+  - "Stack: Next.js (App Router) + Payload CMS + PostgreSQL"
+  - "Deploy target: Vercel (Hobby) + Supabase (Free); all infrastructure must stay within free tiers"
+  - "Vercel Hobby is non-commercial only; commercial operation may require Pro"
+  - "Supabase Free pauses inactive projects"
+  - "Serverless runtime requires the Supabase connection pooler"
+  - "Bilingual content: Korean + English"
+  - "Privacy consent checkbox required on the application form"
+scope: "In: tour list/detail pages (ko/en), sessions with capacity and auto-close, guest and member applications, email+password member login with my-applications view, email notifications, admin status workflow (pending/confirmed/cancelled), CSV export, stats dashboard. Out: online payment/refunds, social login, KakaoTalk notifications, multi-role admin, extra languages."
+
+verification: "Vitest (unit/integration) + Playwright (E2E application flow)"
+external_systems:
+  - "PostgreSQL (Supabase)"
+  - "Transactional email service (free tier)"
+  - "S3-compatible object storage for images (e.g. Supabase Storage)"
+  - "Vercel hosting"
+ui_surface: has-ui
+team_sharing: solo
