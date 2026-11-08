@@ -1,7 +1,7 @@
 ---
 id: SPEC-INFRA-001
 title: "프로젝트 기반 구축 — Next.js + Payload CMS 단일 앱 골격과 로컬 개발·테스트 환경"
-version: "0.1.2"
+version: "0.1.3"
 status: draft
 created: 2026-11-08
 updated: 2026-11-08
@@ -23,6 +23,7 @@ tier: M
 | 0.1.0 | 2026-11-08 | study2 (manager-spec) | 최초 작성 — `product.md` §7 로드맵 1번 항목 "프로젝트 기반 구축" |
 | 0.1.1 | 2026-11-08 | study2 (manager-spec) | plan-audit 1~2회차 지적 반영 — 1회차 D1~D13(셸 안전 검증, 검사 범위, 순차 검증, 조항별 AC, `.gitignore` 실제 상태, Node 범위 교집합 등), 2회차 N1~N8(제외 목록 단일화, DB 전제 명시, E2E 포트 단언, 측정 방식 통일, 시스템 컬렉션 필터). 서비스 가칭을 "숨비투어"로 변경 |
 | 0.1.2 | 2026-11-08 | study2 (orchestrator) | plan-audit 3회차 N9 반영 — "검사 대상 코드"에 `scripts/`와 루트 YAML 설정 파일 포함, `lint` 예시에 `scripts` 추가, AC-INFRA-010에 `scripts/` 대조 확인 추가 |
+| 0.1.3 | 2026-11-08 | study2 (manager-spec) | run 단계 plan-audit 4회차 N12 반영 — AC-INFRA-010의 scripts/ 린트 탐침 내용을 구문 오류(`var a = ;`)로 바꿔 ESLint·Prettier가 모두 실패하도록 수정 |
 
 ## 1. 개요
 

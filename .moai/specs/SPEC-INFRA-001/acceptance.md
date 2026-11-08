@@ -99,7 +99,7 @@
 - **When** `pnpm lint`와 `pnpm format:check`를 실행한다
 - **Then** 두 명령 모두 종료 코드 0으로 끝난다
 - **And** 저장소 규칙 테스트가 `spec.md` §2.5 **검사 제외 목록**의 모든 항목(MoAI 소유 경로 `.claude/`, `.moai/`, `.github/`, `.git_hooks/`, `CLAUDE.md`, `.mcp.json`, `.claudeignore`, `.worktreeinclude` / `*.md` / 생성 파일 / 산출물 디렉터리)이 `.prettierignore`와 ESLint 설정의 `globalIgnores` 양쪽에 똑같이 들어 있음을 확인한다(목록은 테스트 안에 한 번만 정의하고 두 파일에 같은 목록을 대조). ESLint 설정에 Prettier 충돌 방지 설정(`eslint-config-prettier`)이 포함되어 있다
-- **And** 범위 밖 확인 — `.moai/` 아래에 형식과 린트 규칙을 모두 어기는 임시 파일 `.moai/__lint_probe.ts`(내용 `const  a=1`)를 만든 뒤 `pnpm format:check`와 `pnpm lint`를 실행해도 둘 다 종료 코드 0이다. 같은 내용을 `src/__lint_probe.ts`에 두면 `pnpm format:check`가 0이 아닌 종료 코드로 끝난다(검사가 실제로 동작함을 대조 확인). 또 `scripts/__lint_probe.mjs`(내용 `var  a=1`)를 두면 `pnpm lint`와 `pnpm format:check`가 모두 0이 아닌 종료 코드로 끝난다(`scripts/`가 두 검사 모두에 포함됨을 확인). 확인 후 임시 파일을 모두 지운다
+- **And** 범위 밖 확인 — `.moai/` 아래에 형식과 린트 규칙을 모두 어기는 임시 파일 `.moai/__lint_probe.ts`(내용 `const  a=1`)를 만든 뒤 `pnpm format:check`와 `pnpm lint`를 실행해도 둘 다 종료 코드 0이다. 같은 내용을 `src/__lint_probe.ts`에 두면 `pnpm format:check`가 0이 아닌 종료 코드로 끝난다(검사가 실제로 동작함을 대조 확인). 또 `scripts/__lint_probe.mjs`(내용 `var a = ;` — 두 도구가 모두 거부하는 구문 오류)를 두면 `pnpm lint`와 `pnpm format:check`가 모두 0이 아닌 종료 코드로 끝난다(`scripts/`가 두 검사 모두에 포함됨을 확인). 확인 후 임시 파일을 모두 지운다
 - **And** `.gitattributes`가 텍스트 파일을 LF로 정규화하고, `git ls-files --eol | Select-String -SimpleMatch 'i/crlf'` 결과가 0건이다(같은 명령에서 `Select-String -SimpleMatch 'i/lf'` 결과는 1건 이상)
 
 ### AC-INFRA-011 — 환경 변수 예시 파일과 비밀 값 제외
