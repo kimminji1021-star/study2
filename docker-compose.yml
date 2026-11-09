@@ -1,0 +1,32 @@
+# 로컬 개발용 PostgreSQL (SPEC-INFRA-001 REQ-INFRA-006). 앱은 컨테이너가 아니라 호스트에서 실행한다.
+# 값은 모두 .env에서 읽는다(.env.example을 복사해 채운다). 실행: docker compose up -d
+
+# 프로젝트 이름을 고정한다. 이름이 없으면 체크아웃 디렉터리 이름이 쓰여서
+# 같은 저장소의 다른 작업 트리에서 실행할 때 컨테이너와 데이터 볼륨이 따로 생긴다.
+name: sumbi-tour
+
+services:
+  postgres:
+    # 메이저 버전을 고정한다. latest를 쓰면 메이저가 바뀔 때 기존 데이터 볼륨과 호환이 깨질 수 있다.
+    image: postgres:17-alpine
+    environment:
+      # 값이 비어 있으면 Compose가 컨테이너를 만들기 전에 이 안내와 함께 실패한다.
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env (see .env.example)}
+    ports:
+      # 호스트 포트는 POSTGRES_PORT로 바꿀 수 있다(기본 5432). 같은 PC 안에서만 접속하도록 루프백에 묶는다.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      # 이름 있는 볼륨: 컨테이너를 지우고 다시 만들어도 데이터가 남는다(`docker compose down -v`로만 삭제).
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # $$는 Compose 치환을 막고 컨테이너 안 셸이 변수를 풀게 한다.
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  postgres-data:

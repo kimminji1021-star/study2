@@ -239,3 +239,11 @@ dist-ssr/
 .vercel/
 .netlify/
 .firebase/
+
+# ===========================================
+# Test & Coverage Reports (SPEC-INFRA-001)
+# ===========================================
+coverage/
+playwright-report/
+test-results/
+blob-report/
