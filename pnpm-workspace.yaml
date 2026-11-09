@@ -9,3 +9,9 @@ engineStrict: true
 # sharp는 이 SPEC의 범위(미디어 처리) 밖이므로 넣지 않는다.
 allowBuilds:
   esbuild: true
+
+# 간접 의존성 보안 패치: monaco-editor(@payloadcms/ui 경유)가 고정한 dompurify 3.4.15에
+# critical·high 권고가 있어 패치 버전으로 올린다(SPEC-INFRA-001 sync 감사 F4).
+# 상위 패키지가 3.4.17 이상을 쓰게 되면 이 항목을 지운다.
+overrides:
+  dompurify: 3.4.17
