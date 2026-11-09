@@ -91,9 +91,7 @@ describe('AC-INFRA-005 의존성 버전 정책', () => {
       .map((name) => ({ name, version: readInstalledPackage(name).version ?? '' }))
       .filter(
         ({ version }) =>
-          semver.valid(version) === null ||
-          semver.prerelease(version) !== null ||
-          semver.major(version) < 1,
+          semver.valid(version) === null || semver.prerelease(version) !== null || semver.major(version) < 1,
       )
 
     expect(violations).toEqual([])
@@ -269,12 +267,7 @@ describe('AC-INFRA-011 환경 변수 예시 파일', () => {
 function listFiles(relativeDir: string): string[] {
   return readdirSync(path.join(repoRoot, relativeDir), { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
-    .map((entry) =>
-      path
-        .relative(repoRoot, path.join(entry.parentPath, entry.name))
-        .split(path.sep)
-        .join('/'),
-    )
+    .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'))
     .sort()
 }
 
@@ -411,5 +404,160 @@ describe('AC-INFRA-006 커버리지 설정', () => {
     expect(coverage.provider).toBe('v8')
     expect(coverage.include).toEqual(['src/lib/**'])
     expect(coverage.thresholds?.lines).toBe(85)
+  })
+})
+
+// AC-INFRA-003: Windows PowerShell에서도 같은 결과를 내도록 POSIX 셸 전용 구문을 쓰지 않는다.
+const REQUIRED_SCRIPTS = ['dev', 'build', 'start', 'test', 'e2e', 'lint', 'format', 'format:check', 'typecheck']
+// 명령 앞 인라인 환경 변수 대입(예: `NODE_ENV=test next build`). `cross-env NODE_ENV=test …`는 앞에 cross-env가 있어 걸리지 않는다.
+const INLINE_ENV_ASSIGNMENT = /(^|&&|;)\s*[A-Z][A-Z0-9_]*=\S*\s/
+
+function readScripts(): Record<string, string> {
+  const pkg = JSON.parse(readRepoFile('package.json')) as { scripts?: Record<string, string> }
+  return pkg.scripts ?? {}
+}
+
+describe('AC-INFRA-003 스크립트 제공과 Windows 호환', () => {
+  it('scripts에 필수 키 9개가 모두 있다', () => {
+    const scripts = readScripts()
+    const present = REQUIRED_SCRIPTS.filter((name) => typeof scripts[name] === 'string' && scripts[name] !== '')
+
+    expect(REQUIRED_SCRIPTS).toHaveLength(9)
+    expect(present).toEqual(REQUIRED_SCRIPTS)
+  })
+
+  it('어떤 스크립트에도 rm -rf가 없다', () => {
+    const entries = Object.entries(readScripts())
+    expect(entries.length).toBeGreaterThanOrEqual(9)
+
+    expect(entries.filter(([, command]) => command.includes('rm -rf'))).toEqual([])
+  })
+
+  it('어떤 스크립트에도 명령 앞 인라인 환경 변수 대입이 없다(cross-env 사용)', () => {
+    const entries = Object.entries(readScripts())
+    expect(entries.length).toBeGreaterThanOrEqual(9)
+
+    // 정규식이 실제로 대입을 잡아내는지 대조 확인한다.
+    expect(INLINE_ENV_ASSIGNMENT.test('NODE_ENV=test next build')).toBe(true)
+    expect(INLINE_ENV_ASSIGNMENT.test('node a.mjs && NODE_OPTIONS=--x next dev')).toBe(true)
+    expect(INLINE_ENV_ASSIGNMENT.test('cross-env NODE_OPTIONS=--no-deprecation next dev')).toBe(false)
+
+    expect(entries.filter(([, command]) => INLINE_ENV_ASSIGNMENT.test(command))).toEqual([])
+  })
+})
+
+// spec.md §2.5 검사 제외 목록 — 이 테스트 안에서 한 번만 정의하고 .prettierignore와 ESLint globalIgnores 양쪽에 대조한다.
+// 표기는 Prettier(.gitignore 문법) 기준이다. ESLint의 `dir/**`, `**/*.md`는 비교 전에 이 표기로 바꾼다.
+const CHECK_EXCLUSIONS = [
+  // MoAI 소유 경로
+  '.claude/',
+  '.moai/',
+  '.github/',
+  '.git_hooks/',
+  'CLAUDE.md',
+  '.mcp.json',
+  '.claudeignore',
+  '.worktreeinclude',
+  // 문서
+  '*.md',
+  // 생성 파일
+  'src/payload-types.ts',
+  'src/app/(payload)/admin/importMap.js',
+  'next-env.d.ts',
+  'pnpm-lock.yaml',
+  // 산출물 디렉터리
+  '.next/',
+  'out/',
+  'build/',
+  'coverage/',
+  'playwright-report/',
+  'test-results/',
+]
+
+// ESLint 설정 안에서 검사 제외 목록을 담는 globalIgnores 항목의 이름
+const ESLINT_EXCLUSIONS_NAME = 'sumbi-tour/check-exclusions'
+
+// 두 도구의 글롭 표기를 한 가지로 맞춘다: 앞의 `/`·`**/` 제거, 끝의 `/**`는 `/`로.
+function normalizeIgnorePattern(pattern: string): string {
+  return pattern
+    .trim()
+    .replace(/^\//, '')
+    .replace(/^\*\*\//, '')
+    .replace(/\/\*\*$/, '/')
+}
+
+function readPrettierIgnoreEntries(): string[] {
+  return readRepoFile('.prettierignore')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'))
+}
+
+type FlatConfigEntry = { name?: string; ignores?: string[]; rules?: Record<string, unknown> }
+
+async function readEslintConfig(): Promise<FlatConfigEntry[]> {
+  const configUrl = pathToFileURL(path.join(repoRoot, 'eslint.config.mjs')).href
+  const loaded = (await import(configUrl)) as { default: FlatConfigEntry | FlatConfigEntry[] }
+  return [loaded.default].flat()
+}
+
+describe('AC-INFRA-010 린트·포맷 범위와 줄바꿈', () => {
+  it('.prettierignore는 검사 제외 목록과 정확히 같다', () => {
+    const entries = readPrettierIgnoreEntries()
+    expect(entries.length).toBeGreaterThanOrEqual(1)
+
+    expect(entries.map(normalizeIgnorePattern).sort()).toEqual([...CHECK_EXCLUSIONS].sort())
+  })
+
+  it('ESLint globalIgnores는 검사 제외 목록과 정확히 같다', async () => {
+    const config = await readEslintConfig()
+    const exclusions = config.filter((entry) => entry.name === ESLINT_EXCLUSIONS_NAME)
+
+    expect(exclusions, `이름이 ${ESLINT_EXCLUSIONS_NAME}인 항목이 하나 있어야 한다`).toHaveLength(1)
+    const entry = exclusions[0] ?? {}
+    // ignores 외의 키가 없어야 전역 무시(globalIgnores)로 동작한다.
+    expect(Object.keys(entry).sort()).toEqual(['ignores', 'name'])
+    const ignores = entry.ignores ?? []
+    expect(ignores.length).toBeGreaterThanOrEqual(1)
+
+    expect(ignores.map(normalizeIgnorePattern).sort()).toEqual([...CHECK_EXCLUSIONS].sort())
+  })
+
+  it('ESLint 설정에 eslint-config-prettier가 들어 있고 규칙을 가진 마지막 항목이다', async () => {
+    const config = await readEslintConfig()
+    const prettierFlat = ((await import('eslint-config-prettier/flat')) as { default: FlatConfigEntry }).default
+
+    const index = config.indexOf(prettierFlat)
+    expect(index, 'eslint-config-prettier/flat이 설정 배열에 있어야 한다').toBeGreaterThanOrEqual(0)
+    // 뒤에 오는 규칙이 포맷 관련 규칙을 다시 켜지 못하도록 규칙을 가진 마지막 항목이어야 한다.
+    const lastWithRules = Math.max(...config.map((entry, i) => (entry.rules === undefined ? -1 : i)))
+    expect(lastWithRules).toBe(index)
+  })
+
+  it('lint 스크립트는 src·tests·scripts를 검사 대상으로 명시한다', () => {
+    const targets = (readScripts().lint ?? '').split(/\s+/)
+
+    expect(targets[0]).toBe('eslint')
+    expect(targets).toEqual(expect.arrayContaining(['src', 'tests', 'scripts']))
+  })
+
+  it('Prettier 설정의 endOfLine은 lf다', async () => {
+    const prettier = await import('prettier')
+    const resolved = await prettier.resolveConfig(path.join(repoRoot, 'src', 'payload.config.ts'), {
+      editorconfig: false,
+    })
+
+    expect(resolved, 'Prettier 설정 파일이 있어야 한다').not.toBeNull()
+    expect(resolved?.endOfLine).toBe('lf')
+  })
+
+  it('.gitattributes는 텍스트 파일을 LF로 정규화한다', () => {
+    const lines = readRepoFile('.gitattributes')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'))
+
+    expect(lines.length).toBeGreaterThanOrEqual(1)
+    expect(lines).toContain('* text=auto eol=lf')
   })
 })

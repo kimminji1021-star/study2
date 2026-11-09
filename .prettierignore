@@ -1,0 +1,30 @@
+# spec.md §2.5 검사 제외 목록 (SPEC-INFRA-001 M6)
+# eslint.config.mjs의 globalIgnores와 같은 목록이다(표기만 `dir/`).
+# 저장소 규칙 테스트(AC-INFRA-010)가 두 파일을 하나의 목록과 대조하므로 한쪽만 고치지 않는다.
+
+# MoAI 소유 경로
+.claude/
+.moai/
+.github/
+.git_hooks/
+CLAUDE.md
+.mcp.json
+.claudeignore
+.worktreeinclude
+
+# 문서
+*.md
+
+# 생성 파일
+src/payload-types.ts
+src/app/(payload)/admin/importMap.js
+next-env.d.ts
+pnpm-lock.yaml
+
+# 산출물 디렉터리
+.next/
+out/
+build/
+coverage/
+playwright-report/
+test-results/
