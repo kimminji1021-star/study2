@@ -597,7 +597,7 @@ push: not-performed  # 위임 지시대로 push하지 않음
 ```yaml
 sync_status: complete
 sync_complete_at: 2026-11-09
-sync_commit_sha: pending-backfill
+sync_commit_sha: 8b1b3fb
 sync_base_head: 2a87218
 spec_status_transition: "in-progress → completed"
 changelog_entry_position: "CHANGELOG.md [Unreleased] 추가됨·보안 (신규 파일)"
