@@ -561,3 +561,98 @@ describe('AC-INFRA-010 린트·포맷 범위와 줄바꿈', () => {
     expect(lines).toContain('* text=auto eol=lf')
   })
 })
+
+// AC-INFRA-016: README 절은 이 순서대로 나와야 한다. 각 항목은 해당 `## ` 제목에 들어 있어야 하는 문자열이다.
+const README_SECTION_ORDER = [
+  '사전 준비',
+  '환경 변수',
+  'DB 실행',
+  '의존성 설치',
+  'Playwright 브라우저',
+  '개발 서버',
+  '관리자',
+  '테스트',
+  '문제 해결',
+] as const
+
+// 문제 해결 절이 다뤄야 하는 주제(acceptance.md AC-INFRA-016 + 이 PC에서 실제로 겪은 문제).
+const README_TROUBLESHOOTING_TOPICS = [
+  '5432',
+  'POSTGRES_PORT',
+  'E2E_PORT',
+  'docker compose up -d',
+  'OneDrive',
+  'Corepack',
+  'EPERM',
+  'WSL',
+  'CRLF',
+  'pnpm format',
+] as const
+
+function readReadme(): string {
+  return readRepoFile('README.md')
+}
+
+function readReadmeHeadings(): string[] {
+  return readReadme()
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('## '))
+    .map((line) => line.slice(3).trim())
+}
+
+describe('AC-INFRA-016 README 개발 환경 안내', () => {
+  it('README 제목은 기존 제목(study2)을 유지한다', () => {
+    expect(readReadme().split(/\r?\n/)[0]).toBe('# study2')
+  })
+
+  it.each(['사전 준비', '환경 변수', '문제 해결'])('README에 "%s"가 있다', (keyword) => {
+    expect(readReadme()).toContain(keyword)
+  })
+
+  it('README 절 제목이 요구 순서대로 나온다', () => {
+    const headings = readReadmeHeadings()
+    expect(headings.length).toBeGreaterThanOrEqual(README_SECTION_ORDER.length)
+
+    const positions = README_SECTION_ORDER.map((keyword) => headings.findIndex((heading) => heading.includes(keyword)))
+    for (const [i, keyword] of README_SECTION_ORDER.entries()) {
+      expect(positions[i], `"${keyword}"이 들어간 ## 제목이 있어야 한다`).toBeGreaterThanOrEqual(0)
+    }
+    // 같은 제목을 두 항목이 함께 가리키지 않고, 위치가 오름차순이어야 한다.
+    expect(new Set(positions).size).toBe(positions.length)
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+  })
+
+  it('README는 단계별 핵심 명령을 그 순서대로 안내한다', () => {
+    const readme = readReadme()
+    const commands = [
+      'node -v',
+      'pnpm -v',
+      'docker info',
+      'Copy-Item .env.example .env',
+      'docker compose up -d',
+      'pnpm install',
+      'pnpm exec playwright install chromium',
+      'pnpm dev',
+      'http://localhost:3000/admin',
+      'pnpm test',
+      'pnpm e2e',
+    ]
+    const positions = commands.map((command) => readme.indexOf(command))
+    for (const [i, command] of commands.entries()) {
+      expect(positions[i], `README에 \`${command}\`가 있어야 한다`).toBeGreaterThanOrEqual(0)
+    }
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+  })
+
+  it('문제 해결 절은 포트 충돌·DB 미실행·OneDrive·Corepack·WSL·CRLF를 다룬다', () => {
+    const readme = readReadme()
+    // 번호가 붙은 제목(예: `## 9. 문제 해결`)도 찾도록 줄 단위로 검색한다.
+    const start = readme.search(/^## .*문제 해결/m)
+    expect(start, '"문제 해결"이 들어간 ## 제목이 있어야 한다').toBeGreaterThanOrEqual(0)
+    const troubleshooting = readme.slice(start)
+
+    for (const topic of README_TROUBLESHOOTING_TOPICS) {
+      expect(troubleshooting, `문제 해결 절에 "${topic}"이 있어야 한다`).toContain(topic)
+    }
+  })
+})
