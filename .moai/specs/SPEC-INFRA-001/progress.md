@@ -373,6 +373,76 @@ AC-INFRA-015 시간은 점유 프로세스가 `listening`을 알린 직후부터
 - `probePortFree`는 루프백 접속 확인마다 최대 1초를 쓴다(빈 포트는 즉시 거부되어 실제로는 수 ms)
 - `src/payload-types.ts`가 `next dev`·`build` 뒤 `M`으로 보이지만 `git hash-object` = `HEAD:src/payload-types.ts` = `0e09ed7…`로 내용 변경 없음(커밋에 넣지 않음, M6 `.gitattributes` 대상)
 
+### M6 — 린트·포맷 범위·줄바꿈·스크립트
+
+긴 출력은 `.moai/state/verify/a08890a8/m6/`(로컬 전용). 기준 트리: M5 커밋 `fc94857`. 실행 셸: Git Bash. Node 24.22.1, pnpm 11.28.9. 기준선: 변경 전 `pnpm test` 종료 코드 0 `Tests  82 passed (82)`(`baseline-test.log`), `git ls-files --eol`에서 `i/crlf` 0건·`i/lf` 506건·`i/none` 10건(빈 `.gitkeep` 9개와 빈 `custom.scss`). 작업 트리는 `core.autocrlf=true`로 체크아웃되어 `w/crlf` 506건.
+
+**커밋**
+
+| SHA | 내용 |
+|---|---|
+| `d8e7013` | 설정·의존성·저장소 규칙 테스트 |
+| `ed481ea` | `pnpm format` 첫 적용(줄 나눔만 바뀐 5개 파일) + `git add --renormalize`(명시 경로) — 인덱스가 이미 모두 LF라 줄바꿈 변경은 0건 |
+
+**만든·바꾼 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `package.json`, `pnpm-lock.yaml` | devDependency `eslint` `9.39.5`, `eslint-config-next` `16.4.5`, `eslint-config-prettier` `10.1.8`, `prettier` `3.9.10`(모두 범위 기호 없음). `@eslint/eslintrc`(FlatCompat)는 필요 없었음 — `eslint-config-next` 16이 `./core-web-vitals`·`./typescript` flat 배열을 직접 내보냄. 스크립트 `lint`(`eslint src tests scripts *.ts *.mjs *.mts`), `format`(`prettier --write .`), `format:check`(`prettier --check .`) 추가 |
+| `eslint.config.mjs` (신규) | `defineConfig([...nextVitals, ...nextTs, globalIgnores([...], 'sumbi-tour/check-exclusions'), prettier])`. 제외 목록은 spec.md §2.5 그대로(`dir/**`, `**/*.md` 표기) |
+| `.prettierignore` (신규) | 같은 목록(`dir/`, `*.md` 표기) |
+| `prettier.config.mjs` (신규) | `endOfLine: 'lf'`, `semi: false`, `singleQuote: true`, `printWidth: 120`, `*.css`는 `singleQuote: false` |
+| `.gitattributes` (신규) | `* text=auto eol=lf` |
+| `tests/unit/repo-rules.spec.ts` | AC-INFRA-003 3건, AC-INFRA-010 6건 추가(아래 TDD 기록) + 포맷으로 기존 줄 2곳 합침 |
+| 포맷 변경만(`ed481ea`) | `src/app/(payload)/admin/[[...segments]]/not-found.tsx`·`page.tsx`, `src/app/(payload)/api/[...slug]/route.ts`(Payload 템플릿 파일, 여러 줄 → 한 줄), `tests/unit/preflight.spec.ts`(배열 한 줄로), `tsconfig.json`(`include` 한 줄로). 내용 변경 없음 |
+
+**결정**
+
+- `printWidth: 120`: 기존 코드를 Prettier API로 미리 포맷해 바뀌는 줄 수를 셈 — 80: 15개 파일 398줄, 100: 7개 파일 71줄, 110: 6개 파일 29줄, 120: 7개 파일 8줄. M1~M5 코드가 120자 기준으로 쓰여 있어 120을 씀. `semi`·`singleQuote`도 기존 코드(세미콜론 0건, 작은따옴표)에 맞춤
+- `*.css` 큰따옴표 예외: 첫 `pnpm format`이 `globals.css`의 `@import "tailwindcss"`를 `'tailwindcss'`로 바꿨고, AC-INFRA-009 저장소 규칙 테스트 3건이 실패함(`css-quote-regression.log`, `Tests  3 failed | 33 passed (36)`). acceptance.md AC-INFRA-009가 고정 문자열 `@import "tailwindcss"`를 요구하므로 CSS만 큰따옴표를 유지하도록 override를 추가하고 다시 포맷 → 36 통과
+- 린트 규칙 예외·비활성화: 없음. `pnpm lint` 첫 실행에서 문제 0건. ESLint가 실제로 검사한 파일은 30개(`-f json`으로 확인, `importMap.js`·`payload-types.ts`는 제외됨, `scripts/preflight.mjs`·루트 설정 파일 포함)
+- ESLint 제외 항목은 이름(`sumbi-tour/check-exclusions`)으로 찾는다. `eslint-config-next`도 자체 전역 무시(`.next/**`, `out/**`, `build/**`, `next-env.d.ts`)를 넣지만 우리 목록의 부분집합이라 충돌 없음
+
+**TDD 기록**
+
+- RED: 테스트만 추가한 상태에서 `pnpm exec vitest run --project unit tests/unit/repo-rules.spec.ts --coverage.enabled=false` → 종료 코드 1, `Tests  9 failed | 27 passed (36)`(`red-unit.log`). 실패: `scripts에 필수 키 9개가 모두 있다` `AssertionError: expected [ 'dev', 'build', 'start', …(3) ] to deeply equal [ 'dev', 'build', 'start', …(6) ]`, `rm -rf`·인라인 대입 검사 `expected 8 to be greater than or equal to 9`, `.prettierignore` `ENOENT`, ESLint 2건 `Cannot find module '…/eslint.config.mjs'`, lint 스크립트 `expected '' to be 'eslint'`, Prettier `Cannot find package 'prettier'`, `.gitattributes` `ENOENT`
+- GREEN: 의존성·설정·스크립트 추가 후 같은 명령 `Tests  36 passed (36)`(`green-unit.log`)
+- REFACTOR: 없음(테스트 코드는 포맷만 적용)
+
+**AC 검증** (최종 순차 실행, HEAD `ed481ea`, 이 작업 트리)
+
+| AC | 명령 | 종료 코드 | 결과 끝부분 |
+|---|---|---|---|
+| AC-INFRA-004 (typecheck) | `pnpm typecheck` | 0 | `tsc --noEmit` 오류 0(`final-typecheck.log`) |
+| AC-INFRA-004 (build) | `pnpm build` | 0 | `✓ Compiled successfully in 10.5s`, `○ /`, `ƒ /admin/[[...segments]]`, `ƒ /api/[...slug]`, `ƒ /api/graphql`, `ƒ /api/graphql-playground`(`final-build.log`). 빌드 뒤 `git status --short` 0줄 |
+| AC-INFRA-003·010 저장소 규칙 + 전체 | `pnpm test` | 0 | `Test Files  5 passed (5)`, `Tests  91 passed (91)`(82 + 9), `preflight.ts  100 \| 93.75 \| 100 \| 100`(`final-test.log`) |
+| AC-INFRA-008 | `pnpm e2e` | 0 | `ok 1`~`ok 4`, `4 passed (43.1s)`(`final-e2e.log`) |
+| AC-INFRA-010 lint | `pnpm lint` | 0 | 출력은 명령 줄뿐(문제 0건)(`final-lint.log`) |
+| AC-INFRA-010 format | `pnpm format:check` | 0 | `All matched files use Prettier code style!`(`final-format-check.log`) |
+| AC-INFRA-010 범위 밖 1 | `.moai/__lint_probe.ts`(`const  a=1`) 두고 `pnpm format:check`, `pnpm lint` | 0, 0 | `All matched files use Prettier code style!` / 문제 0건(`probe1-*.log`). 바로 삭제 |
+| AC-INFRA-010 대조 2 | `src/__lint_probe.ts`(같은 내용) 두고 `pnpm format:check` | 1 | `[warn] src/__lint_probe.ts`, `Code style issues found in the above file.`(`probe2-format.log`). 바로 삭제 |
+| AC-INFRA-010 scripts/ 포함 3 | `scripts/__lint_probe.mjs`(`var a = ;`) 두고 `pnpm lint`, `pnpm format:check` | 1, 2 | `1:8  error  Parsing error: Expression expected` / `[error] > 1 \| var a = ;`, `Error occurred when checking code style in the above file.`(`probe3-*.log`). 바로 삭제 |
+| AC-INFRA-010 줄바꿈 | `git ls-files --eol` | — | `i/crlf` 0건, `i/lf` 510건, `i/none` 10건, 추적 파일 520개 모두 `attr/text=auto eol=lf`(`eol-final.txt`) |
+| REQ-INFRA-015 Windows 체크아웃 | `git -c core.autocrlf=true clone`(작업 트리 밖 임시 폴더) 후 `git ls-files --eol` | 0 | `w/crlf` 0건, `w/lf` 510건 — `.gitattributes`가 `core.autocrlf=true`보다 우선해 LF로 풀림 |
+| `payload-types.ts` | `pnpm build` 뒤, `pnpm generate:types` 뒤 `git status --short` | — | 둘 다 0줄. 단, 이 파일의 인덱스 정보가 예전 CRLF 체크아웃 기준이라 `generate:types` 첫 실행 뒤에는 `M`(`git diff` 0줄, `hash-object` = `HEAD` blob `0e09ed7…`)이 보였고, 같은 blob을 `git add`해 인덱스 정보만 갱신한 뒤 다시 실행하자 0줄 |
+| 탐침 정리·포트 | `ls` 세 탐침, `netstat -ano` 3000·3100, `ls AGENTS.md` | — | 세 탐침 모두 `No such file or directory`, LISTENING 0건, `AGENTS.md` 없음 |
+
+**계획과 다른 점**
+
+- `git add --renormalize`는 인덱스에 이미 CRLF가 없어 아무것도 바꾸지 않음(별도 줄바꿈 커밋 없음)
+- `prettier.config.mjs`에 지시된 `endOfLine` 외에 `semi`·`singleQuote`·`printWidth`·CSS override를 둠(이유는 위 결정)
+
+**미검증 항목**
+
+- PowerShell 실행(Git Bash만). `pnpm lint`의 `*.ts` 같은 글롭은 셸이 아니라 ESLint가 펼치므로 셸 차이는 없을 것으로 봄(추론)
+- 기존 체크아웃(주 작업 트리)에서의 `pnpm format:check` — 아래 남은 위험 참고
+
+**남은 위험**
+
+- `.gitattributes`는 새로 쓰는 파일에만 적용된다. `core.autocrlf=true`로 이미 체크아웃된 작업 트리를 `ed481ea`로 빨리 감기하면, 이번에 바뀌지 않은 파일은 CRLF로 남아 `pnpm format:check`가 실패한다. 임시 클론에서 재현: `fc94857` CRLF 상태 → `ed481ea` 체크아웃 뒤 `w/crlf` 498건, `prettier --check .` 종료 코드 1, 26개 파일 경고. 해결 확인: `pnpm format`(`prettier --write .`) → `--check` 종료 코드 0, `git diff` 0줄. 이때 `git status`에 내용 변경 없는 `M` 26건이 남고, 그 경로를 `git add`하면 상태 0줄·스테이징 0건
+- Payload 템플릿 라우트 3개 파일(“DO NOT MODIFY”)을 포맷이 한 줄로 합쳤다. Payload가 이 파일들을 다시 생성하면 여러 줄로 돌아와 `format:check`가 실패할 수 있다(`importMap.js`만 생성 대상이고 이 3개는 `generate:importmap` 대상이 아님 — 미검증)
+- `pnpm add` 뒤 `pnpm peers check`: `vite@8.3.6`이 `esbuild` `^0.27.0 || ^0.28.0`을 원하나 `0.25.12` 설치(경고, 테스트·빌드는 통과). M5 잠금 파일(`fc94857`)에도 `vite@8.3.6(…)(esbuild@0.25.12)`로 이미 있던 상태라 M6에서 생긴 문제가 아님
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_
