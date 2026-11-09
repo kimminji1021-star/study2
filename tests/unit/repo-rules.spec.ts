@@ -474,6 +474,9 @@ const CHECK_EXCLUSIONS = [
   'test-results/',
 ]
 
+// eslint.config.mjs를 처음 불러올 때(새로 설치한 직후 캐시가 없을 때) 기본 제한 시간 5초를 넘긴 적이 있어 넉넉하게 둔다.
+const ESLINT_CONFIG_LOAD_TIMEOUT_MS = 30_000
+
 // ESLint 설정 안에서 검사 제외 목록을 담는 globalIgnores 항목의 이름
 const ESLINT_EXCLUSIONS_NAME = 'sumbi-tour/check-exclusions'
 
@@ -509,30 +512,38 @@ describe('AC-INFRA-010 린트·포맷 범위와 줄바꿈', () => {
     expect(entries.map(normalizeIgnorePattern).sort()).toEqual([...CHECK_EXCLUSIONS].sort())
   })
 
-  it('ESLint globalIgnores는 검사 제외 목록과 정확히 같다', async () => {
-    const config = await readEslintConfig()
-    const exclusions = config.filter((entry) => entry.name === ESLINT_EXCLUSIONS_NAME)
+  it(
+    'ESLint globalIgnores는 검사 제외 목록과 정확히 같다',
+    async () => {
+      const config = await readEslintConfig()
+      const exclusions = config.filter((entry) => entry.name === ESLINT_EXCLUSIONS_NAME)
 
-    expect(exclusions, `이름이 ${ESLINT_EXCLUSIONS_NAME}인 항목이 하나 있어야 한다`).toHaveLength(1)
-    const entry = exclusions[0] ?? {}
-    // ignores 외의 키가 없어야 전역 무시(globalIgnores)로 동작한다.
-    expect(Object.keys(entry).sort()).toEqual(['ignores', 'name'])
-    const ignores = entry.ignores ?? []
-    expect(ignores.length).toBeGreaterThanOrEqual(1)
+      expect(exclusions, `이름이 ${ESLINT_EXCLUSIONS_NAME}인 항목이 하나 있어야 한다`).toHaveLength(1)
+      const entry = exclusions[0] ?? {}
+      // ignores 외의 키가 없어야 전역 무시(globalIgnores)로 동작한다.
+      expect(Object.keys(entry).sort()).toEqual(['ignores', 'name'])
+      const ignores = entry.ignores ?? []
+      expect(ignores.length).toBeGreaterThanOrEqual(1)
 
-    expect(ignores.map(normalizeIgnorePattern).sort()).toEqual([...CHECK_EXCLUSIONS].sort())
-  })
+      expect(ignores.map(normalizeIgnorePattern).sort()).toEqual([...CHECK_EXCLUSIONS].sort())
+    },
+    ESLINT_CONFIG_LOAD_TIMEOUT_MS,
+  )
 
-  it('ESLint 설정에 eslint-config-prettier가 들어 있고 규칙을 가진 마지막 항목이다', async () => {
-    const config = await readEslintConfig()
-    const prettierFlat = ((await import('eslint-config-prettier/flat')) as { default: FlatConfigEntry }).default
+  it(
+    'ESLint 설정에 eslint-config-prettier가 들어 있고 규칙을 가진 마지막 항목이다',
+    async () => {
+      const config = await readEslintConfig()
+      const prettierFlat = ((await import('eslint-config-prettier/flat')) as { default: FlatConfigEntry }).default
 
-    const index = config.indexOf(prettierFlat)
-    expect(index, 'eslint-config-prettier/flat이 설정 배열에 있어야 한다').toBeGreaterThanOrEqual(0)
-    // 뒤에 오는 규칙이 포맷 관련 규칙을 다시 켜지 못하도록 규칙을 가진 마지막 항목이어야 한다.
-    const lastWithRules = Math.max(...config.map((entry, i) => (entry.rules === undefined ? -1 : i)))
-    expect(lastWithRules).toBe(index)
-  })
+      const index = config.indexOf(prettierFlat)
+      expect(index, 'eslint-config-prettier/flat이 설정 배열에 있어야 한다').toBeGreaterThanOrEqual(0)
+      // 뒤에 오는 규칙이 포맷 관련 규칙을 다시 켜지 못하도록 규칙을 가진 마지막 항목이어야 한다.
+      const lastWithRules = Math.max(...config.map((entry, i) => (entry.rules === undefined ? -1 : i)))
+      expect(lastWithRules).toBe(index)
+    },
+    ESLINT_CONFIG_LOAD_TIMEOUT_MS,
+  )
 
   it('lint 스크립트는 src·tests·scripts를 검사 대상으로 명시한다', () => {
     const targets = (readScripts().lint ?? '').split(/\s+/)
