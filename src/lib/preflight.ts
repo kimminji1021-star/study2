@@ -32,7 +32,7 @@ export function formatMissingEnvMessage(missing: readonly string[]): string {
   ].join('\n')
 }
 
-// @MX:NOTE: [AUTO] Payload 설정 로드 시점의 재검증용(설정을 직접 불러오는 경로 대비, plan.md §B.3). 연결은 M3에서 한다
+// @MX:NOTE: [AUTO] Payload 설정 로드 시점의 재검증용(설정을 직접 불러오는 경로 대비, plan.md §B.3). src/payload.config.ts가 호출한다
 /** 필수 변수가 비어 있으면 이름만 담은 오류를 던진다. */
 export function assertRequiredEnv(env: EnvSource): void {
   const missing = findMissingEnv(env)
@@ -62,6 +62,8 @@ export function parseDatabaseTarget(value: string): DatabaseTarget | null {
   }
 }
 
+// @MX:ANCHOR: [AUTO] 시작 전 점검(runPreflight)과 Playwright 설정(tests/helpers/e2e-env.ts)이 같은 E2E 포트를 쓰도록 하는 단일 해석 지점
+// @MX:REASON: 해석 규칙이 갈라지면 점검한 포트와 테스트가 띄우는 포트가 달라져 AC-INFRA-008·015가 엉뚱한 서버를 대상으로 한다
 /** E2E_PORT를 해석한다. 비어 있으면 기본값, 1~65535 정수가 아니면 null. */
 export function resolveE2ePort(env: EnvSource): number | null {
   const raw = (env.E2E_PORT ?? '').trim()
