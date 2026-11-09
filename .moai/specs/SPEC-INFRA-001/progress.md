@@ -306,6 +306,73 @@ Chromium: `pnpm exec playwright install chromium` 종료 코드 0(`pw-install.lo
 - Playwright `port` 준비 확인은 서버가 포트를 연 순간 테스트를 시작하므로, 첫 페이지 컴파일 시간은 각 테스트 제한 시간(120초) 안에서 기다린다. 느린 PC에서는 첫 테스트가 이 시간에 걸릴 수 있다
 - `pnpm peers check`의 `vite@8.3.6` `esbuild` peer 불일치는 그대로(M1부터 있던 항목, 이번 추가와 무관)
 
+### M5 — 테스트 하니스 정리
+
+긴 출력은 `.moai/state/verify/a08890a8/m5/`(로컬 전용). 기준 트리: M4 커밋 `00ec300` + 아래 변경. 실행 셸: Git Bash. Node 24.22.1, pnpm 11.28.9. 기준선: 변경 전 `pnpm test` 종료 코드 0 `Tests  78 passed (78)`(`baseline-test.log`), `pnpm e2e` 종료 코드 0 `2 passed (7.4s)`(`baseline-e2e.log`), `users` 행 수 0(컨테이너 안 `psql`, 접속 정보는 출력하지 않음).
+
+**만든·바꾼 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `package.json`, `pnpm-lock.yaml` | devDependency `@vitest/coverage-v8` `5.1.0`(범위 기호 없음, 설치된 `vitest` 5.1.0과 같은 버전) |
+| `vitest.config.mts` | `coverage`: `enabled: true`, `provider: 'v8'`, `include: ['src/lib/**']`, `reporter: ['text', 'json-summary']`, `reportsDirectory: 'coverage'`(이미 `.gitignore`), `thresholds.lines: 85` |
+| `src/lib/preflight.ts` | `probePortFree`: 모든 주소 바인딩 시도(기존) 뒤 `127.0.0.1`·`::1` 접속 시도를 추가. 접속되면 `accepting connections on <주소>`로 사용 중 판정(R15, M2 잔여 위험 해소) |
+| `tests/unit/preflight.spec.ts` | `127.0.0.1` 전용 점유, `::1` 전용 점유를 사용 중으로 보는지 2건 추가 |
+| `tests/unit/repo-rules.spec.ts` | AC-INFRA-006 커버리지 설정 2건 추가(`@vitest/coverage-v8` 고정·버전 일치, `vitest.config.mts`를 실제로 불러와 `enabled`·`provider`·`include`·`thresholds.lines` 단언) |
+| `tests/e2e/admin.spec.ts` (신규) | `/admin/login`에 `#field-email`·`#field-password`·Login 버튼이 보이고 경로가 `/admin/login`에 머무름 / 테스트 관리자로 로그인 → 경로 `/admin` + `.dashboard` 보임. 방문마다 E2E 포트 단언 |
+| `tests/e2e/global-setup.ts` (신규) | Payload 로컬 API로 `e2e-admin-<UUID>@example.test` 계정을 만들고(비밀번호는 `randomBytes(24)`로 실행 중 생성, 출력 안 함) 환경 변수로 넘김. 돌려준 정리 함수가 `delete` 후 `destroy` |
+| `tests/helpers/test-admin.ts` (신규) | 계정 전달 변수 이름(`E2E_TEST_ADMIN_EMAIL`·`E2E_TEST_ADMIN_PASSWORD`)과 읽기 함수. 값이 없으면 변수 이름만 담은 오류 |
+| `tests/helpers/e2e-assert.ts` (신규) | `expectE2ePort` — `home.spec.ts`에 있던 단언을 옮겨 두 E2E 파일이 함께 씀(단언 내용은 그대로) |
+| `tests/e2e/home.spec.ts` | 지역 `expectE2ePort` 대신 위 공통 함수 import(REFACTOR, 단언 변경 없음) |
+| `playwright.config.ts` | `globalSetup: './tests/e2e/global-setup.ts'` |
+
+**TDD 기록**
+
+- RED(단위·저장소 규칙): 테스트만 추가한 상태에서 `pnpm exec vitest run --project unit` → 종료 코드 1, `Tests  4 failed | 71 passed (75)`(`red-unit.log`). 실패 내용: `127.0.0.1에만 묶인 점유도 사용 중으로 본다` `AssertionError: expected true to be false`, `::1(IPv6 루프백)에만 묶인 점유도 사용 중으로 본다` 같은 오류, `@vitest/coverage-v8가 직접 의존성에 있어야 한다: expected undefined to be type of 'string'`, 커버리지 설정 `expected undefined to be true`. 루프백 전용 점유를 놓치는 문제(M2 잔여 위험)가 Windows에서 실제로 재현됨
+- RED(E2E): `admin.spec.ts`만 있고 준비 단계가 없는 상태에서 `pnpm e2e` → 종료 코드 1, `2 failed`, `2 passed`(`red-e2e.log`). 1번: `getByRole('button', { name: /login/i })` `element(s) not found` — 화면 접근성 트리가 `heading "Welcome"`, `To begin, create your first user.`, `button "Create"`(빈 `users` 테이블이라 첫 사용자 생성 화면). 2번: `Test admin account is not prepared: E2E_TEST_ADMIN_EMAIL and E2E_TEST_ADMIN_PASSWORD must be set by tests/e2e/global-setup.ts.`
+- GREEN: 커버리지 설정·`probePortFree` 수정 후 `pnpm test` `Tests  82 passed (82)`(`green-test.log`). 준비 단계 추가 후 `pnpm e2e` `4 passed (29.9s)`(`green-e2e.log`), 실행 뒤 `users` 0
+- REFACTOR: 포트 단언 공통화(`e2e-assert.ts`), 경로 단언을 입력란 확인 뒤로 옮김(클라이언트 이동이 끝난 뒤 판정)
+
+**AC 검증** (모두 이 작업 트리, HEAD `00ec300` + 위 변경, 순차 실행)
+
+| AC | 명령 | 종료 코드 | 시간 | 결과 끝부분 |
+|---|---|---|---|---|
+| AC-INFRA-004 (typecheck) | `pnpm typecheck` | 0 | — | `tsc --noEmit` 오류 0(`final-typecheck.log`) |
+| AC-INFRA-004 (build) | `pnpm build` | 0 | — | `✓ Compiled successfully in 20.0s`, `○ /`, `ƒ /admin/[[...segments]]`, `ƒ /api/[...slug]` 등(`final-build.log`) |
+| AC-INFRA-006 (커버리지 포함) | `pnpm test` | 0 | 5.75초(Vitest `Duration`) | `Test Files  5 passed (5)`, `Tests  82 passed (82)`(단위 75 + 통합 7), `preflight.ts  100 \| 93.75 \| 100 \| 100`(Stmts·Branch·Funcs·Lines), `coverage-summary.json` `lines {"total":67,"covered":67,"pct":100}`(`final-test.log`) |
+| AC-INFRA-006 (임계값이 실제로 막는지) | `pnpm test --project integration`(단위 테스트를 빼 커버리지를 일부러 낮춤, 파일 수정 없음) | 1 | — | `Tests  7 passed (7)` 인데 `ERROR: Coverage for lines (22.38%) does not meet global threshold (85%)`(`threshold-bite.log`) |
+| AC-INFRA-008 (전체) | `pnpm e2e` | 0 | 26.5초(Playwright 보고) | `ok 1 … /admin/login은 이메일·비밀번호 입력란과 로그인 버튼을 보여 준다 (11.9s)`, `ok 2 … 테스트 관리자 계정으로 로그인하면 /admin으로 이동하고 대시보드가 보인다 (3.6s)`, `ok 3`·`ok 4`(홈), `4 passed (26.5s)`(`final-e2e.log`) |
+| AC-INFRA-008 (실패 시 계정 정리) | `pnpm exec playwright test --timeout=1`(모든 테스트를 일부러 시간 초과시킴) | 1 | — | `4 failed`, 실행 뒤 `users` 0(`cleanup-on-failure.log`) |
+| AC-INFRA-015 (모든 주소 바인딩) | 점유 `node -e "require('net').createServer().listen(3100, …)"` 후 `pnpm e2e` | 1 | 0.56초 | `[preflight] E2E port 3100 is already in use by another process (EADDRINUSE).`, `passed` 0건. 점유 프로세스(PID 16100)만 종료, 이후 3100 바인딩 가능·접속 불가(`ac015-wildcard.log`) |
+| AC-INFRA-015 (`127.0.0.1` 전용 바인딩) | 점유 `…listen(3100, '127.0.0.1', …)` 후 `pnpm e2e` | 1 | 0.60초 | `[preflight] E2E port 3100 is already in use by another process (accepting connections on 127.0.0.1).`, `passed` 0건. 점유 프로세스(PID 17420)만 종료, 이후 포트 비어 있음(`ac015-loopback.log`) |
+| R10 (테스트 데이터) | 컨테이너 안 `psql … select count(*) from users`(접속 정보는 `.env`에서 읽어 넘기고 출력 안 함) | 0 | — | 시작 전 0 → `pnpm test` 뒤 0 → `pnpm e2e` 뒤 0 → 실패 강제 실행 뒤 0 |
+| 포트·AGENTS.md | `netstat -ano` 3000·3100 LISTENING, `ls AGENTS.md` | — | — | LISTENING 0건, `No such file or directory` |
+
+AC-INFRA-015 시간은 점유 프로세스가 `listening`을 알린 직후부터 `pnpm e2e`가 끝날 때까지 Node `process.hrtime`으로 잼(PowerShell `Measure-Command` 아님).
+
+**R14 결과**
+
+- `.env`의 `NEXT_PUBLIC_SERVER_URL`은 포트 3000을 가리킨다(값 자체는 출력하지 않고 포트만 확인). E2E는 `webServer.env`로 `http://localhost:3100`을 넘긴다. Next의 `.env` 로드가 이미 설정된 변수를 덮어쓰지 않는다면 Payload `serverURL`은 3100이 된다(이 동작은 서버 안에서 값을 직접 찍어 확인하지 않았다 — 추론)
+- 이 상태에서 3100 포트 로그인이 성공(위 `ok 2`). 따라서 R14 가설의 실패는 일어나지 않았고 Payload `csrf`·`cors` 설정을 바꿀 필요가 없었다. 덮어쓰기를 빼고 3000을 가리키게 한 대조 실험은 하지 않음(미검증 항목)
+
+**계획과 다른 점**
+
+- 커버리지는 `src/lib/` 아래 파일이 현재 `preflight.ts` 하나라 "합산"이 이 파일 하나의 값과 같다
+- AC-INFRA-015는 PowerShell `Measure-Command` 대신 Node 스크립트(작업 트리 밖 임시 디렉터리)로 시간·종료 코드를 잼
+
+**미검증 항목**
+
+- R14 대조 실험(`NEXT_PUBLIC_SERVER_URL`을 덮어쓰지 않았을 때 로그인이 실제로 실패하는지)
+- PowerShell 실행(Git Bash만)
+- `pnpm e2e` 실행 중 강제 종료(Ctrl+C) 시 정리 단계 실행 여부 — 테스트 실패 시 정리는 확인함
+- `::1` 전용 점유로 `pnpm e2e`를 돌린 경우(단위 테스트로만 확인)
+
+**남은 위험**
+
+- 준비 단계는 Playwright 실행 프로세스 안에서 Payload를 초기화하므로, 개발 모드 스키마 반영(push)이 E2E 서버의 첫 Payload 초기화와 겹치지 않는다는 가정에 기대고 있다. 현재는 준비 단계가 끝난 뒤 첫 요청이 가므로 겹치지 않는다
+- `probePortFree`는 루프백 접속 확인마다 최대 1초를 쓴다(빈 포트는 즉시 거부되어 실제로는 수 ms)
+- `src/payload-types.ts`가 `next dev`·`build` 뒤 `M`으로 보이지만 `git hash-object` = `HEAD:src/payload-types.ts` = `0e09ed7…`로 내용 변경 없음(커밋에 넣지 않음, M6 `.gitattributes` 대상)
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

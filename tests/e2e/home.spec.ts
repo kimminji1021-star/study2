@@ -1,14 +1,8 @@
 // 임시 홈 페이지 E2E 스모크 — AC-INFRA-008(홈 부분)
-import { expect, test, type Page } from '@playwright/test'
-
-import { E2E_PORT } from '../helpers/e2e-env'
+import { expect, test } from '@playwright/test'
 
 // 각 페이지 방문 뒤 E2E 전용 포트에서 응답했는지 확인한다(개발 서버 3000을 잘못 테스트하는 경우 방지)
-function expectE2ePort(page: Page): void {
-  const { port } = new URL(page.url())
-  expect(port).toBe(String(E2E_PORT))
-  expect(port).not.toBe('3000')
-}
+import { expectE2ePort } from '../helpers/e2e-assert'
 
 // Tailwind 유틸리티 `text-4xl`의 글자 크기(2.25rem, 루트 16px 기준)
 const HEADING_FONT_SIZE = '36px'

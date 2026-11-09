@@ -3,7 +3,7 @@
 // 각 검사는 대상이 1건 이상 있음을 먼저 단언해, 대상이 비어서 통과하는 경우를 막는다.
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import semver from 'semver'
 import { describe, expect, it } from 'vitest'
@@ -378,5 +378,38 @@ describe('AC-INFRA-004 단일 앱 라우트 구조', () => {
 
     expect(directories.length).toBeGreaterThanOrEqual(1)
     expect(directories).toEqual(['(frontend)', '(payload)'])
+  })
+})
+
+// vitest.config.mts를 실제로 불러와 커버리지 설정을 읽는다(문자열 검색이 아니라 Vitest가 쓰는 값 그대로).
+type CoverageSettings = {
+  enabled?: boolean
+  provider?: string
+  include?: string[]
+  thresholds?: { lines?: number }
+}
+
+async function readCoverageSettings(): Promise<CoverageSettings> {
+  const configUrl = pathToFileURL(path.join(repoRoot, 'vitest.config.mts')).href
+  const loaded = (await import(configUrl)) as { default: { test?: { coverage?: CoverageSettings } } }
+  return loaded.default.test?.coverage ?? {}
+}
+
+describe('AC-INFRA-006 커버리지 설정', () => {
+  it('@vitest/coverage-v8는 범위 기호 없이 고정되어 있고 설치된 vitest와 같은 버전이다', () => {
+    const declared = directDependencies(readRootPackage())['@vitest/coverage-v8']
+
+    expect(declared, '@vitest/coverage-v8가 직접 의존성에 있어야 한다').toBeTypeOf('string')
+    expect(semver.valid(declared ?? ''), `정확한 버전이 아님: ${declared}`).toBe(declared)
+    expect(readInstalledPackage('@vitest/coverage-v8').version).toBe(readInstalledPackage('vitest').version)
+  })
+
+  it('pnpm test는 v8 커버리지를 켜고 src/lib/ 합산 라인 85% 미만이면 실패한다', async () => {
+    const coverage = await readCoverageSettings()
+
+    expect(coverage.enabled).toBe(true)
+    expect(coverage.provider).toBe('v8')
+    expect(coverage.include).toEqual(['src/lib/**'])
+    expect(coverage.thresholds?.lines).toBe(85)
   })
 })

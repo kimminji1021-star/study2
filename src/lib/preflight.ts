@@ -92,14 +92,34 @@ export function probeTcp(host: string, port: number, timeoutMs: number): Promise
   })
 }
 
+// 루프백 주소 접속 확인 시간 제한. 같은 PC 안의 접속이라 짧게 둔다.
+const LOOPBACK_PROBE_TIMEOUT_MS = 1000
+const LOOPBACK_HOSTS = ['127.0.0.1', '::1'] as const
+
 /** 포트를 잠깐 열어 보고 닫는다. 이미 다른 프로세스가 쓰고 있으면 실패(EADDRINUSE). */
-export function probePortFree(port: number): Promise<ProbeResult> {
+function probeListen(port: number): Promise<ProbeResult> {
   return new Promise((resolve) => {
     const server = net.createServer()
     server.once('error', (error) => resolve({ ok: false, reason: errorReason(error) }))
     // 호스트를 지정하지 않으면 모든 주소(가능하면 IPv6 이중 스택)에 바인딩해, 어느 주소에서든 점유를 잡아낸다.
     server.listen({ port }, () => server.close(() => resolve({ ok: true })))
   })
+}
+
+/**
+ * 포트가 비어 있는지 확인한다. 바인딩 시도 → 루프백 주소 접속 시도 순서.
+ * Windows는 127.0.0.1(또는 ::1)에만 묶인 점유가 있어도 모든 주소 바인딩을 허용할 수 있어서,
+ * 바인딩이 성공해도 루프백 주소로 실제 접속이 되면 사용 중으로 본다(plan.md R15, M2 잔여 위험).
+ */
+export async function probePortFree(port: number): Promise<ProbeResult> {
+  const listened = await probeListen(port)
+  if (!listened.ok) return listened
+
+  for (const host of LOOPBACK_HOSTS) {
+    const connected = await probeTcp(host, port, LOOPBACK_PROBE_TIMEOUT_MS)
+    if (connected.ok) return { ok: false, reason: `accepting connections on ${host}` }
+  }
+  return { ok: true }
 }
 
 export const PREFLIGHT_COMMANDS = ['dev', 'build', 'start', 'test', 'e2e'] as const

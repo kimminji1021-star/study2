@@ -193,6 +193,22 @@ describe('TCP 접속·포트 점유 확인 (로컬 소켓)', () => {
 
     expect(result).toEqual({ ok: false, reason: 'EADDRINUSE' })
   })
+
+  // Windows는 127.0.0.1에만 묶인 포트가 있어도 모든 주소(::)에 묶는 시도를 허용할 수 있어,
+  // 바인딩 시도만으로는 루프백 전용 점유를 놓친다(M2 잔여 위험). 이런 점유도 사용 중으로 봐야 한다.
+  it('127.0.0.1에만 묶인 점유도 사용 중으로 본다', async () => {
+    const port = await listen('127.0.0.1')
+    const result = await probePortFree(port)
+
+    expect(result.ok).toBe(false)
+  })
+
+  it('::1(IPv6 루프백)에만 묶인 점유도 사용 중으로 본다', async () => {
+    const port = await listen('::1')
+    const result = await probePortFree(port)
+
+    expect(result.ok).toBe(false)
+  })
 })
 
 describe('명령별 시작 전 점검 흐름', () => {

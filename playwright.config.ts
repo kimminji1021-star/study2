@@ -1,11 +1,12 @@
 // Playwright E2E 설정 — 전용 포트에 개발 서버를 새로 띄워 테스트한다(SPEC-INFRA-001 plan.md M4·M5, R8·R13·R14).
-// 테스트 관리자 계정 준비·정리 단계는 M5에서 추가한다.
+// 테스트 관리자 계정은 globalSetup이 만들고, globalSetup이 돌려준 정리 함수가 끝난 뒤 지운다.
 import { defineConfig, devices } from '@playwright/test'
 
 import { E2E_BASE_URL, E2E_PORT } from './tests/helpers/e2e-env'
 
 export default defineConfig({
   testDir: './tests/e2e',
+  globalSetup: './tests/e2e/global-setup.ts',
   // CI에서 test.only가 남아 있으면 실패시킨다
   forbidOnly: !!process.env.CI,
   retries: 0,
