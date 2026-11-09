@@ -443,9 +443,152 @@ AC-INFRA-015 시간은 점유 프로세스가 `listening`을 알린 직후부터
 - Payload 템플릿 라우트 3개 파일(“DO NOT MODIFY”)을 포맷이 한 줄로 합쳤다. Payload가 이 파일들을 다시 생성하면 여러 줄로 돌아와 `format:check`가 실패할 수 있다(`importMap.js`만 생성 대상이고 이 3개는 `generate:importmap` 대상이 아님 — 미검증)
 - `pnpm add` 뒤 `pnpm peers check`: `vite@8.3.6`이 `esbuild` `^0.27.0 || ^0.28.0`을 원하나 `0.25.12` 설치(경고, 테스트·빌드는 통과). M5 잠금 파일(`fc94857`)에도 `vite@8.3.6(…)(esbuild@0.25.12)`로 이미 있던 상태라 M6에서 생긴 문제가 아님
 
+### M7 — README 한국어 안내
+
+긴 출력은 `.moai/state/verify/a08890a8/m7/`(로컬 전용). 기준 트리: M6 커밋 `0233d89`. 실행 셸: Git Bash. Node 24.22.1, pnpm 11.28.9, Docker 29.9.2, Docker Compose v5.6.1, Corepack 0.36.0. 작업 트리를 `0233d89`로 빨리 감기한 뒤 `pnpm install --frozen-lockfile`(종료 코드 0, `baseline-install.log`).
+
+**기준선**: 변경 전 `pnpm test` 첫 실행은 종료 코드 1, `Tests  1 failed | 90 passed (91)` — `AC-INFRA-010 … ESLint globalIgnores는 검사 제외 목록과 정확히 같다`가 `Error: Test timed out in 5000ms.`(`baseline-test.log`). 같은 명령을 바로 다시 실행하자 종료 코드 0, `Tests  91 passed (91)`(`baseline-test-2.log`). 새로 설치한 직후 `eslint.config.mjs`를 처음 불러올 때 5초 제한을 넘긴 것으로 보며(추론), M7 변경과 무관하다. 아래 남은 위험 참고.
+
+**커밋**
+
+| SHA | 내용 |
+|---|---|
+| `8923eac` | `README.md` 개발 환경 안내 + 저장소 규칙 테스트 AC-INFRA-016 7건 |
+
+**만든·바꾼 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `README.md` | 기존 제목 `# study2` 유지. 절 순서: 1 사전 준비(Node.js LTS·`node -v`, pnpm 활성화·`pnpm -v`, Docker Desktop·`docker info`·WSL 안내) → 2 환경 변수 설정(`Copy-Item .env.example .env`, 변수별 뜻, 무작위 값 생성 명령 — 실제 값 없음) → 3 DB 실행(`docker compose up -d`, `docker compose ps`의 `(healthy)`) → 4 의존성 설치 → 5 Playwright 브라우저 설치 → 6 개발 서버 실행 → 7 첫 관리자 계정 생성 → 8 테스트 실행(`pnpm test`, `pnpm e2e`, typecheck·lint·format:check·build 표) → 9 문제 해결(5432 포트 충돌·`POSTGRES_PORT`, E2E 포트 충돌·`E2E_PORT`, DB 미실행, OneDrive 동기화, Corepack 권한 오류, WSL 미설치, CRLF·`pnpm format`). 시간 추정·비밀 값 없음. Prettier 검사 제외 대상(`*.md`) |
+| `tests/unit/repo-rules.spec.ts` | `AC-INFRA-016 README 개발 환경 안내` describe 7건: 제목 유지 1, 키워드 `사전 준비`·`환경 변수`·`문제 해결` 3, `## ` 제목 순서 1, 핵심 명령 11개 등장 순서 1, 문제 해결 절 주제 10개 1 |
+
+**결정**
+
+- 무작위 값 생성은 `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`로 안내: PowerShell·POSIX 셸에서 같은 인용으로 동작하고(PowerShell은 미실행 — 미검증 항목), 16진수라 `DATABASE_URL`에 URL 인코딩 없이 들어간다. Git Bash에서 실행해 출력 형태만 확인(값은 출력하지 않고 `length 64 hexOnly true`)
+- Docker Desktop 다운로드 링크는 넣지 않음: 이번 실행에서 URL을 직접 확인할 수단(WebFetch)이 없었다. Node.js 링크(`nodejs.org`)는 plan.md §C에 있는 주소다
+- 한국어 문장 다듬기: 지시된 `moai-domain-humanize` 스킬은 이 환경 목록에 없어 `moai-writer:korean-humanize`를 썼다. 이 PC에 Python이 없어(`python`·`python3`·`py` 모두 없음) 스킬의 수치 게이트(`metrics.py`·`verify_gates.py`)는 돌리지 못했고, 정독 검토만 했다. 고친 곳 3곳: `pnpm을 켠다` → `활성화한다`, `이름 있는 볼륨` → `이름을 붙인 Docker 볼륨(named volume)`, 미확인 Docker 링크 제거
+
+**TDD 기록**
+
+- RED: 테스트만 추가한 상태(README는 `# study2` 한 줄)에서 `pnpm exec vitest run --project unit tests/unit/repo-rules.spec.ts --coverage.enabled=false -t "AC-INFRA-016"` → 종료 코드 1, `Tests  6 failed | 1 passed | 36 skipped (43)`(`red-unit.log`). 실패: `AssertionError: expected '# study2\r\n' to contain '사전 준비'`(`환경 변수`·`문제 해결`도 같음), 제목 순서 `expected 0 to be greater than or equal to 9`, 명령 순서 ``README에 `node -v`가 있어야 한다: expected -1 to be greater than or equal to 0``, 문제 해결 절 `expected -1 to be greater than or equal to 0`. 통과 1건은 제목 유지 검사
+- GREEN: README 작성 후 같은 명령 1차 `Tests  1 failed | 6 passed`. 문제 해결 절 검사가 `'## 문제 해결'` 고정 문자열을 찾는데 README 제목이 `## 9. 문제 해결`이라 실패 → 테스트를 줄 단위 정규식(`/^## .*문제 해결/m`)으로 고침(README 제목 형식을 테스트에 맞추지 않고, 다른 절 검사와 같은 "제목에 포함" 기준으로 통일). 2차 `Tests  7 passed | 36 skipped (43)`(`green-unit.log`). README 1-1의 "`pnpm install`이 실패한다" 문장이 명령 순서 검사에서 `pnpm install`의 첫 등장을 앞당겨, "4단계 의존성 설치가 실패한다"로 바꿈
+- REFACTOR: 없음
+
+**AC-INFRA-016 따라 하기 기록** (README 순서대로, 이 작업 트리, HEAD `0233d89` + 작업 중 변경)
+
+| 단계 | 명령 | 결과 |
+|---|---|---|
+| 1 사전 준비 | `node -v` / `pnpm -v` / `docker info --format '{{.ServerVersion}}'` | `v24.22.1` / `11.28.9` / `29.9.2`. Node.js·pnpm·Docker Desktop·WSL 설치는 이미 되어 있어 건너뜀 |
+| 2 환경 변수 | `Copy-Item .env.example .env` | PowerShell 미실행. `.env`가 이미 있어 덮어쓰지 않음(주 작업 트리의 `.env`와 `cmp` 동일). 값을 출력하지 않고 변수 존재만 확인: 필수·Compose 변수 7개 `set`, `E2E_PORT` 없음(기본 3100). `git check-ignore -v .env` → `.gitignore:126:.env` |
+| 3 DB 실행 (AC-INFRA-001) | `docker compose up -d` → `docker compose ps` | 종료 코드 0, `Container sumbi-tour-postgres-1 Running`, `Up 2 hours (healthy)`, `127.0.0.1:5432->5432/tcp` |
+| 4 의존성 설치 (AC-INFRA-002) | `pnpm install --frozen-lockfile` | 종료 코드 0, `Already up to date`(`walk-install.log`). 새 설치는 기준선 단계에서 같은 명령으로 종료 코드 0(`baseline-install.log`) |
+| 5 Playwright | `pnpm exec playwright install chromium` | 종료 코드 0, 출력 없음(이미 설치됨) |
+| 6 개발 서버 | `pnpm dev`(백그라운드) | `✓ Ready in 1229ms`, `- Local: http://localhost:3000`. `GET /` → 200 |
+| 7 첫 관리자 (AC-INFRA-007 방식) | `curl` `/admin` → `/admin/login` → `/admin/create-first-user` | `/admin` 200 + 본문 `NEXT_REDIRECT;replace;/admin/login;307`, `/admin/login` 200 + `NEXT_REDIRECT;replace;/admin/create-first-user;307`, `/admin/create-first-user` 200 + 리디렉션 표식 0건. 계정은 만들지 않음. 서버는 이 실행이 띄운 PID 26408(실행 전 3000·3100 LISTENING 0건 확인)만 `taskkill /T` → 3000·3100 LISTENING 0건 |
+| 8 테스트 (AC-INFRA-006) | `pnpm test` | 종료 코드 0, `Tests  98 passed (98)`, `preflight.ts  100 \| 93.75 \| 100 \| 100` |
+| 8 테스트 (AC-INFRA-008) | `pnpm e2e` | 종료 코드 0, `ok 1`~`ok 4`, `4 passed (35.1s)` |
+| 8 품질 (AC-INFRA-004 외) | `pnpm typecheck` / `pnpm lint` / `pnpm format:check` / `pnpm build` | 모두 종료 코드 0. build `✓ Compiled successfully in 21.9s`, 라우트 `○ /`, `ƒ /admin/[[...segments]]`, `ƒ /api/[...slug]`, `ƒ /api/graphql`, `ƒ /api/graphql-playground` |
+| 9 CRLF | `git ls-files --eol` | 이 작업 트리의 `w/crlf` 463건은 모두 Prettier 검사 제외 경로(`.claude` 384, `.moai` 69, `.github` 4, `.git_hooks` 2, 루트 MoAI 파일 4)라 `format:check`가 통과. 문제 해결 절의 `pnpm format` 절차는 이번에 재현되지 않았고, M6에서 임시 클론으로 확인한 결과를 근거로 함 |
+
+**AC 검증** (최종 순차 실행, HEAD `8923eac`, 이 작업 트리)
+
+| AC | 명령 | 종료 코드 | 결과 끝부분 |
+|---|---|---|---|
+| AC-INFRA-004 (typecheck) | `pnpm typecheck` | 0 | `tsc --noEmit` 오류 0(`final-typecheck.log`) |
+| AC-INFRA-004 (build) | `pnpm build` | 0 | `✓ Compiled successfully in 1691ms`, 라우트 6개(`final-build.log`) |
+| AC-INFRA-006·016 저장소 규칙 + 전체 | `pnpm test` | 0 | `Test Files  5 passed (5)`, `Tests  98 passed (98)`(91 + 7), `preflight.ts  100 \| 93.75 \| 100 \| 100`(`final-test.log`) |
+| AC-INFRA-008 | `pnpm e2e` | 0 | `4 passed (24.7s)`(`final-e2e.log`) |
+| AC-INFRA-010 lint | `pnpm lint` | 0 | 명령 줄만 출력(문제 0건)(`final-lint.log`) |
+| AC-INFRA-010 format | `pnpm format:check` | 0 | `All matched files use Prettier code style!`(`final-format-check.log`) |
+| 정리 | `netstat -ano` 3000·3100, `git status --short` | — | LISTENING 0건, 작업 트리 변경 0줄 |
+
+**계획과 다른 점**
+
+- 지시된 `moai-domain-humanize` 대신 `moai-writer:korean-humanize` 사용, 수치 게이트 미실행(위 결정)
+- `Copy-Item`은 PowerShell 명령이라 실행하지 않았고 `.env`도 이미 있어 복사 단계는 확인만 함
+
+**미검증 항목**
+
+- PowerShell 5.1·7에서 README 명령 실행(Git Bash만). 특히 `Copy-Item`, `Get-NetTCPConnection … | Select-Object OwningProcess`, `node -e "…"` 인용
+- 실제 브라우저에서 첫 관리자 계정 생성(HTTP 리디렉션 표식으로만 확인, 계정은 만들지 않음)
+- 문제 해결 절의 5432 충돌 시 `docker compose up -d`가 새 포트로 컨테이너를 다시 만드는 동작(M2 AC-INFRA-013은 `down` 뒤 `up -d`로 확인), `wsl --install`, `corepack enable pnpm` 관리자/일반 권한 차이, `npm install -g pnpm@11.28.9` 경로 — 사용자 PC에서 겪은 사례와 plan.md §C를 근거로 적었고 이번에 재현하지 않음
+- Docker Desktop 다운로드 경로 안내(링크 없이 "Docker 공식 사이트"로만 씀)
+
+**남은 위험**
+
+- 새로 설치한 직후 첫 `pnpm test`에서 ESLint 설정을 불러오는 저장소 규칙 테스트가 5초 제한에 걸릴 수 있다(기준선에서 1회 재현, 재실행 시 통과). README를 처음 따라 하는 사람이 바로 이 실패를 볼 수 있다. 테스트 제한 시간 조정은 M7 범위 밖이라 손대지 않음
+- README의 명령 순서·키워드는 테스트로 고정했지만, 명령이 실제로 동작하는지는 테스트하지 않는다(따라 하기 기록이 유일한 근거)
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<pending run-phase>_
+```yaml
+run_status: audit-ready
+run_complete_at: 2026-11-09
+run_commit_sha: 8923eac  # M7 코드 커밋. 이 증거 기록 커밋 자체의 SHA는 커밋 뒤에 정해진다
+development_mode: tdd
+milestones:
+  M1: 65917e9
+  M2: 27cae41
+  M3: f17ae5d
+  M4: 00ec300
+  M5: fc94857
+  M6: [d8e7013, ed481ea, 0233d89]  # 0233d89 = M6 증거 기록
+  M7: 8923eac
+final_run:  # HEAD 8923eac, Git Bash, 순차 실행
+  typecheck: 0
+  build: 0
+  test: "0 — Tests 98 passed (98), src/lib 라인 커버리지 100%"
+  e2e: "0 — 4 passed"
+  lint: 0
+  format_check: 0
+ac_summary:
+  automated_command_pass:  # 명령 실행 결과로 확인(각 마일스톤 §E.2 표 참고)
+    - AC-INFRA-001  # M2 기동·영속성·비밀번호 인증, M7 따라 하기 healthy
+    - AC-INFRA-002  # M1 범위 밖 Node 거부, M7 --frozen-lockfile 0
+    - AC-INFRA-003  # M6 저장소 규칙
+    - AC-INFRA-004  # M7 최종 typecheck·build
+    - AC-INFRA-005  # 저장소 규칙
+    - AC-INFRA-006  # M7 최종 pnpm test
+    - AC-INFRA-008  # M7 최종 pnpm e2e
+    - AC-INFRA-009  # M4 저장소 규칙 + E2E
+    - AC-INFRA-010  # M6 탐침 + M7 최종 lint·format:check
+    - AC-INFRA-011  # M2 저장소 규칙 + check-ignore
+    - AC-INFRA-012  # M2(test)·M3(dev) 누락 변수
+    - AC-INFRA-013  # M2 POSTGRES_PORT=5433
+    - AC-INFRA-014  # M2(test)·M3(dev) DB 정지
+    - AC-INFRA-015  # M5 E2E 포트 점유
+    - AC-INFRA-016  # M7 저장소 규칙 7건 + README 따라 하기
+  verified_by_http_not_browser:
+    - AC-INFRA-007  # /admin → /admin/login → /admin/create-first-user 리디렉션 표식(M3, M7). 브라우저 주소 표시줄·실제 계정 생성은 미확인
+  git_bash_only:  # PowerShell 5.1·7은 에이전트가 실행하지 않음
+    - AC-INFRA-001
+    - AC-INFRA-002
+    - AC-INFRA-003
+    - AC-INFRA-004
+    - AC-INFRA-006
+    - AC-INFRA-008
+    - AC-INFRA-010
+    - AC-INFRA-012
+    - AC-INFRA-013
+    - AC-INFRA-014
+    - AC-INFRA-015
+    - AC-INFRA-016
+  timing_measurement_note: "AC-INFRA-012·014·015의 시간은 Measure-Command가 아니라 셸·Node로 잼"
+ac_pass_count: 16
+ac_fail_count: 0
+known_gaps:
+  - "PowerShell 5.1·7 실행 미검증(spec.md §4 Windows 호환 제약) — 사용자 확인 필요"
+  - "AC-INFRA-007 브라우저 수동 확인 미실행(HTTP로 대체)"
+  - "README 문제 해결 절의 5432 충돌 재생성·WSL·Corepack 권한·npm 전역 설치 경로는 이번 실행에서 재현하지 않음"
+  - "새 설치 직후 첫 pnpm test에서 ESLint 설정 로드 테스트가 5초 제한에 걸린 사례 1회(재실행 통과)"
+  - "Payload 템플릿 라우트 3개 파일 포맷 변경의 재생성 영향 미검증(M6 남은 위험)"
+new_warnings_or_lints_introduced: 0
+cross_platform_build:
+  windows_git_bash: pass
+  powershell_5_1: not-run
+  powershell_7: not-run
+push: not-performed  # 위임 지시대로 push하지 않음
+```
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
