@@ -2,9 +2,9 @@
 id: SPEC-INFRA-001
 title: "프로젝트 기반 구축 — Next.js + Payload CMS 단일 앱 골격과 로컬 개발·테스트 환경"
 version: "0.1.3"
-status: draft
+status: in-progress
 created: 2026-11-08
-updated: 2026-11-08
+updated: 2026-11-09
 author: study2
 priority: P1
 phase: "v0.1.0 target"
