@@ -53,10 +53,7 @@ describe('필수 환경 변수 검증 (AC-INFRA-012)', () => {
   })
 
   it('빈 문자열과 공백만 있는 값은 누락으로 본다', () => {
-    expect(findMissingEnv({ DATABASE_URL: '', PAYLOAD_SECRET: '   ' })).toEqual([
-      'DATABASE_URL',
-      'PAYLOAD_SECRET',
-    ])
+    expect(findMissingEnv({ DATABASE_URL: '', PAYLOAD_SECRET: '   ' })).toEqual(['DATABASE_URL', 'PAYLOAD_SECRET'])
   })
 
   it('둘 다 값이 있으면 누락이 없다', () => {
