@@ -1,10 +1,10 @@
 # 구조 설계 (structure.md)
 
-> 상태: **제안 구조** — 아직 코드가 없습니다. 실제 구조는 첫 SPEC(프로젝트 기반 구축) 구현 시 확정하며, 그때 이 문서를 갱신합니다.
+> 상태: **기반 구축 완료(SPEC-INFRA-001, 2026-11-09)** — 앱 골격·테스트·도구 구성은 §2.1의 실제 구조를 따릅니다. §2의 기능 경로(로케일 라우팅, 투어·신청 화면 등)는 이후 SPEC에서 만들 예정인 제안 구조입니다.
 
 ## 1. 전체 방향
 
-Payload CMS(3.x 계열 전제 — 버전은 첫 SPEC에서 확정, `tech.md` 참고)는 Next.js 앱 안에서 함께 실행됩니다. 따라서 프론트엔드와 관리자 화면, API를 하나의 Next.js App Router 프로젝트로 구성합니다. 라우트 그룹으로 사용자 화면 `(frontend)`과 Payload 관리자 `(payload)`를 분리합니다.
+Payload CMS(3.93.0, `tech.md` 참고)는 Next.js 앱 안에서 함께 실행됩니다. 따라서 프론트엔드와 관리자 화면, API를 하나의 Next.js App Router 프로젝트로 구성합니다. 라우트 그룹으로 사용자 화면 `(frontend)`과 Payload 관리자 `(payload)`를 분리합니다.
 
 ## 2. 디렉터리 구성 (제안)
 
@@ -46,6 +46,42 @@ study2/
 | `src/lib` | 정원 확인·자동 마감, 이메일 발송, CSV 변환 등 업무 로직 |
 | `src/i18n` | 컬렉션 데이터가 아닌 고정 UI 문구 번역 |
 | `tests/` | 테스트 종류별 분리 |
+
+### 2.1 현재 실제 구조 (SPEC-INFRA-001 완료 시점)
+
+```text
+study2/
+├── src/
+│   ├── app/
+│   │   ├── (frontend)/            # layout.tsx, page.tsx(임시 홈), globals.css
+│   │   └── (payload)/             # Payload 템플릿 생성 파일(admin/, api/, layout.tsx, custom.scss)
+│   ├── collections/
+│   │   └── Users.ts               # 관리자 인증 컬렉션
+│   ├── lib/
+│   │   └── preflight.ts           # 환경 변수·DB 연결 시작 전 점검(단일 모듈)
+│   ├── payload.config.ts
+│   └── payload-types.ts           # Payload 생성 타입
+├── scripts/
+│   └── preflight.mjs              # dev·test 시작 전 점검 실행 진입점
+├── tests/
+│   ├── unit/                      # 점검 로직, CLI, 저장소 규칙(repo-rules.spec.ts)
+│   ├── integration/               # 설정·환경 변수, Users 인증(실제 DB)
+│   ├── e2e/                       # 홈·관리자 화면, global-setup.ts
+│   └── helpers/                   # E2E 환경·단언, 테스트 관리자 도우미
+├── docker-compose.yml             # 로컬 PostgreSQL(프로젝트 이름 sumbi-tour, 127.0.0.1 바인딩)
+├── .env.example                   # 환경 변수 이름 목록
+├── package.json / pnpm-lock.yaml / pnpm-workspace.yaml
+├── next.config.ts / tsconfig.json / postcss.config.mjs
+├── eslint.config.mjs / prettier.config.mjs / .prettierignore / .gitattributes
+├── vitest.config.mts / playwright.config.ts
+├── CHANGELOG.md
+└── README.md                      # 한국어 개발 환경 안내
+```
+
+메모:
+
+- `src/app/(payload)` 아래 "DO NOT MODIFY" 표시가 있는 템플릿 파일 3개는 Prettier 규칙에 맞춰 포맷만 바뀌었습니다. Payload 업그레이드로 재생성하면 포맷 차이가 다시 생길 수 있습니다.
+- 계획 단계에서 선택 사항이던 `docker-compose.yml`은 필수 구성으로 확정되었습니다.
 
 ## 3. Payload 컬렉션 설계 (개념 수준)
 

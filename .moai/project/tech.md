@@ -1,6 +1,6 @@
 # 기술 스택 (tech.md)
 
-> 상태: 신규 프로젝트 — 코드와 의존성이 아직 없습니다. 버전 번호는 첫 SPEC에서 설치 시점의 안정 버전으로 확정합니다(현재 공식 문서 확인 필요).
+> 상태: SPEC-INFRA-001(기반 구축) 완료로 핵심 버전이 고정되었습니다(§8). 이메일·스토리지·배포 관련 항목은 해당 SPEC에서 확정합니다.
 
 ## 1. 스택과 선택 이유
 
@@ -16,7 +16,7 @@
 | 회원 인증 | Payload 내장 인증 (이메일 + 비밀번호) | 추가 인증 서비스 없이 `Members` 컬렉션으로 구현 |
 | 이메일 | 무료 요금제 트랜잭션 메일 서비스 — **결정 필요** (`product.md` §8) | 아래 2절 참고 |
 | 테스트 | Vitest (단위·통합), Playwright (E2E) | 사용자 지정. 신청 흐름 전체를 브라우저로 검증 |
-| 패키지 매니저 | pnpm (2026-11-08 결정) | Payload 공식 템플릿이 주로 사용. 버전은 SPEC-INFRA-001에서 고정 |
+| 패키지 매니저 | pnpm 11.28.9 (`packageManager`로 고정) | Payload 공식 템플릿이 주로 사용 |
 
 ## 2. 이메일 발송 서비스 후보 (결정 필요 — `product.md` §8)
 
@@ -30,7 +30,8 @@
 ## 3. 로컬 개발 환경
 
 - Node.js LTS (정확한 최소 버전은 Payload·Next.js 공식 요구사항 확인 필요)
-- 패키지 매니저: pnpm (SPEC-INFRA-001 참고)
+- 패키지 매니저: pnpm 11.28.9 (Corepack 사용, `README.md` 참고)
+- Node.js 범위: `^22.23.4 || ^24.22.1 || >=26.0.0` (`engineStrict: true`로 범위 밖 설치 차단)
 - PostgreSQL — 다음 중 하나
   - Docker로 로컬 PostgreSQL 실행 (`docker-compose.yml`)
   - 개발 전용 Supabase 프로젝트 사용 (무료 프로젝트 수 제한 확인 필요)
@@ -72,5 +73,31 @@
 ## 7. 품질 기준
 
 - TRUST 5 원칙 적용, 테스트 커버리지 목표 85% 이상
-- 린트·포맷 도구(ESLint, Prettier 등)는 기반 구축 SPEC에서 확정
+- 린트·포맷: ESLint 9 + eslint-config-next, Prettier 3(§8 참고)
 - 코드 주석: 한국어 (`language.yaml`의 `code_comments: ko`)
+
+## 8. 확정 버전과 결정 사항 (SPEC-INFRA-001)
+
+| 항목 | 값 | 비고 |
+|---|---|---|
+| Payload CMS | 3.93.0 (`payload`, `@payloadcms/next`, `@payloadcms/ui`, `@payloadcms/db-postgres`, `@payloadcms/richtext-lexical`) | 템플릿은 payload v3.93.0 저장소의 `with-postgres`를 sparse clone으로 가져옴(`create-payload-app`에 해당 템플릿이 없음) |
+| Next.js | 16.4.5 | `next.config.ts`에서 `agentRules: false` |
+| React | 19.3.1 | |
+| TypeScript | 6.0.3 | 7.x는 typescript-eslint 8.72.1이 지원하지 않아 보류 |
+| GraphQL | 16.15.0 | Payload 피어 의존성 |
+| Tailwind CSS | 4.3.5 (PostCSS 플러그인) | |
+| Vitest / Playwright | 5.1.0 / 1.65.0 | Playwright `webServer` 준비 확인은 `port` 기준 |
+| ESLint / Prettier | 9.39.5 / 3.9.10 | Prettier: `semi: false`, `singleQuote`, `printWidth: 120`, CSS는 큰따옴표 |
+| pnpm | 11.28.9 | `engineStrict: true`, `allowBuilds`에 esbuild만 허용 |
+
+구현 결정:
+
+- 환경 변수 로딩은 dotenv 대신 Node 내장 `process.loadEnvFile()`을 쓰고, 점검 로직은 `src/lib/preflight.ts` 한 모듈에 모았습니다.
+- 로컬 DB는 Docker Compose(프로젝트 이름 `sumbi-tour`)로 실행하며 `127.0.0.1`에만 바인딩합니다. 포트는 `.env`의 `POSTGRES_PORT`로 바꿀 수 있습니다(5433 변경 확인 완료).
+- 간접 의존성 `dompurify`는 `overrides`로 3.4.17에 고정했습니다(상위 패키지가 따라오면 제거).
+
+배포 SPEC으로 넘긴 항목:
+
+- `NEXT_PUBLIC_SERVER_URL`이 비어 있으면 CSRF 허용 목록이 비게 됩니다. 운영에서는 이 값을 필수로 하거나 `csrf`를 명시적으로 설정해야 합니다.
+- 남은 `pnpm audit` 권고 5건(happy-dom high 2건, esbuild·minimatch moderate, deepmerge low) 재평가
+- 개발 모드 스키마 푸시 대신 마이그레이션으로 전환, 개발 DB에 남은 `payload_migrations` 행 정리

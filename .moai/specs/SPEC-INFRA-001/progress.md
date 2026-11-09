@@ -590,9 +590,63 @@ cross_platform_build:
 push: not-performed  # 위임 지시대로 push하지 않음
 ```
 
+> 정정(sync 단계, 2026-11-09): 위 `final_run`의 HEAD `8923eac`와 `push: not-performed`는 run 단계 종료 시점의 기록이다. 이후 `d1accae`·`5f94481`까지 origin/main에 push되었고, sync 단계에서 `e10d04c`(dompurify override)와 `2a87218`(MX 태그 보완)이 로컬에 추가되었다(push 전). PowerShell 5.1 실행과 AC-INFRA-007 브라우저 확인은 §E.4에서 해소되었다.
+
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase>_
+```yaml
+sync_status: complete
+sync_complete_at: 2026-11-09
+sync_commit_sha: pending-backfill
+sync_base_head: 2a87218
+spec_status_transition: "in-progress → completed"
+changelog_entry_position: "CHANGELOG.md [Unreleased] 추가됨·보안 (신규 파일)"
+b12_self_test:
+  a_pre_emission_grep: 0   # CHANGELOG.md 없음 → 0
+  b_ac_count: 16           # acceptance.md 고유 AC-ID 16, CHANGELOG '16개' 일치
+  c_paths_verified: true   # 인용 경로 전부 ls 확인
+sync_audit:
+  report: .moai/reports/sync-audit/SPEC-INFRA-001-2026-11-09.md  # 로컬 전용, 커밋하지 않음
+  verdict: FAIL  # 검증 공백 F1·F2·F3 때문. 코드 결함 없음
+  gap_resolution:
+    F1_AC-INFRA-007: "해소 — 사용자가 실제 브라우저에서 /admin → /admin/create-first-user, 첫 관리자 생성 후 /admin 대시보드 진입 확인(2026-11-09). DB 사용자 1명(psql count)"
+    F2_powershell: "해소(5.1) — Windows PowerShell 5.1에서 pnpm test 98 passed, lint 0 problems, format:check 통과, build 성공(.next/BUILD_ID 17:33:26), e2e 4 passed. 첫 e2e는 chrome-headless-shell 'Executable doesn't exist'로 실패(파일은 존재, 일시적 잠금 추정) → pnpm exec playwright install chromium 뒤 통과"
+    F3_AC-INFRA-013: "해소 — POSTGRES_PORT=5433·DATABASE_URL :5433으로 docker compose up -d, compose port → 127.0.0.1:5433, compose 파일 무변경, pnpm test 98 passed, .env 복원(sha256 일치), 5432 healthy. 로그 .moai/state/verify/a08890a8/final/f3-*.log"
+  actions:
+    F4: "e10d04c — dompurify override 3.4.17, pnpm audit 10 → 5건(critical 0)"
+    F9_F10: "2a87218 — MX 태그 보완(resolveE2ePort ANCHOR, assertRequiredEnv NOTE)"
+final_verification:  # main, HEAD 2a87218, 로그 .moai/state/verify/a08890a8/final/ov-*.log
+  typecheck: 0
+  build: 0
+  test: "0 — 98 passed"
+  e2e: "0 — 4 passed"
+  lint: 0
+  format_check: 0
+accepted_divergences:
+  - "템플릿: payload v3.93.0 with-postgres를 sparse clone(create-payload-app에 해당 템플릿 없음)"
+  - "TypeScript 6.0.3(7.0.2 대신) — typescript-eslint 8.72.1이 TS 7 거부"
+  - "pnpm 11.28.9를 packageManager로 고정, engineStrict: true"
+  - "graphql 16.15.0"
+  - "src/lib/preflight.ts 단일 모듈 + process.loadEnvFile()(dotenv 미사용)"
+  - "Compose name: sumbi-tour, 127.0.0.1 바인딩"
+  - "Playwright webServer 준비 확인을 port로"
+  - "Prettier semi:false·singleQuote·printWidth 120, CSS 큰따옴표"
+  - "next.config.ts agentRules: false"
+  - "시간 측정을 Measure-Command 대신 Node로"
+  - "Payload 'DO NOT MODIFY' 템플릿 파일 3개 Prettier 재포맷"
+  - "ESLint 설정 로드 테스트 제한 시간 30초"
+  - "직접 작성 LOC 1,372(빈 줄·주석 제외)로 계획 지침 1,000 초과 — 오케스트레이터 결정으로 Tier M 유지(대부분 테스트, 구조 변경 없음)"
+deferred_to_deployment_spec:
+  - "F8: NEXT_PUBLIC_SERVER_URL 미설정 시 CSRF 허용 목록이 빔 — 운영 필수화 또는 csrf 명시"
+  - "남은 pnpm audit 권고 5건(happy-dom high 2, esbuild·minimatch moderate, deepmerge low) — 현재 도달 경로 없음"
+  - "개발 스키마 푸시 대신 마이그레이션 사용"
+  - "개발 DB의 payload_migrations 행 정리"
+known_gaps:
+  - "PowerShell 7 미실행(5.1만 확인)"
+  - "R14 대비 실험 미실행"
+docs_updated: [CHANGELOG.md, .moai/project/structure.md, .moai/project/tech.md, .moai/project/codemaps/overview.md]
+roadmap_order_changed: false
+```
 
 ## §F Phase 4 Mode Selection
 

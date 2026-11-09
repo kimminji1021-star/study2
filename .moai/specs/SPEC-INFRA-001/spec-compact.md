@@ -1,7 +1,7 @@
 # SPEC-INFRA-001 (compact) — 프로젝트 기반 구축
 
 > run 단계용 요약본. 원본: `spec.md`(요구사항·용어), `acceptance.md`(수용 기준), `plan.md`(버전·마일스톤·위험). 내용이 다르면 원본이 우선한다.
-> Tier M · status: draft · 문서 버전 0.1.3 · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 / 7
+> Tier M · status: completed · 문서 버전 0.1.3 · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 / 7
 
 ## 용어 (spec.md §2.5)
 
