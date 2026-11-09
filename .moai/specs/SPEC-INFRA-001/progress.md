@@ -162,6 +162,78 @@ author: manager-spec
 - E2E 포트 점검은 모든 주소(`::` 이중 스택)에 바인딩해 본다. 점유 프로세스가 `127.0.0.1`에만 바인딩하면 Windows에서 충돌을 못 잡을 수 있다(M5에서 Next 개발 서버의 실제 바인딩 주소와 함께 확인)
 - `docker compose` 하위 명령은 `ps`까지 포함해 `.env`에 `POSTGRES_USER`·`POSTGRES_PASSWORD`·`POSTGRES_DB` 값이 없으면 `${VAR:?…}` 때문에 실패한다. 실측: `docker compose --env-file .env.example ps` → 종료 코드 1, `required variable POSTGRES_DB is missing a value: set POSTGRES_DB in .env (see .env.example)`(USER·PASSWORD도 같은 형식). README(M7)에 `.env` 준비를 DB 실행보다 먼저 안내해야 한다
 
+### M3 — 관리자 인증 컬렉션 `Users`
+
+긴 출력은 `.moai/state/verify/a08890a8/m3/`(로컬 전용). 기준 트리: M2 커밋 `27cae41` + 아래 변경. 실행 셸: Git Bash. 시간은 Node `performance.now()`(시나리오 스크립트)로 측정. Node 24.22.1, pnpm 11.28.9.
+
+**만든·바꾼 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `src/collections/Users.ts` (신규) | slug `users`, `auth: true`(이메일·비밀번호), `admin.useAsTitle: 'email'`, 추가 필드 없음 |
+| `src/payload.config.ts` (신규) | 템플릿 기반. 컬렉션은 `Users`만, `@payloadcms/db-postgres`(`DATABASE_URL`), `secret: PAYLOAD_SECRET`, `serverURL: NEXT_PUBLIC_SERVER_URL ?? ''`, `lexicalEditor()`, 타입 출력 경로. Media·sharp·localization·email 없음. 모듈 최상단에서 M2의 `assertRequiredEnv(process.env)` 호출 |
+| `next.config.ts` (신규) | 템플릿에서 Media용 `images.localPatterns`만 뺌. `withPayload(..., { devBundleServerPackages: false })`, `turbopack.root`, webpack `extensionAlias` 유지 |
+| `src/app/(payload)/**` (템플릿 그대로 8개) | `layout.tsx`, `custom.scss`(빈 파일), `admin/[[...segments]]/{page,not-found}.tsx`, `api/[...slug]/route.ts`, `api/graphql/route.ts`, `api/graphql-playground/route.ts`, `admin/importMap.js`(생성 명령으로 다시 씀 — 내용은 템플릿과 같음) |
+| `src/payload-types.ts` (생성물) | `pnpm generate:types` 결과 296줄 |
+| `vitest.config.mts` | `projects`로 `unit`(tests/unit) / `integration`(tests/integration, `setupFiles`, `fileParallelism: false`, 제한 시간 60초) 분리. 둘 다 Node 환경. 커버리지는 M5 |
+| `tests/integration/setup-env.ts` (신규) | 저장소 루트 `.env`를 `process.loadEnvFile`로 읽음(시작 전 점검 프로세스의 환경은 Vitest로 이어지지 않음) |
+| `tests/integration/users-auth.spec.ts` (신규) | 컬렉션 slug 검사(접두어 `payload-` 필터 주석 포함), 생성 → 올바른 비밀번호 로그인(토큰) → 틀린 비밀번호(`AuthenticationError`, 토큰 없음) → 삭제·재조회 0건. 실행마다 `integration-<UUID>@example.test` 고유 주소, `afterAll`에서 실패와 상관없이 삭제 후 `payload.destroy()` |
+| `tests/integration/config-env.spec.ts` (신규) | 설정 로드 시 재검증: `PAYLOAD_SECRET`만 빈 경우, 두 변수 모두 빈(공백) 경우 이름과 `.env.example` 안내를 담은 오류 |
+| `package.json` | 스크립트 `dev`·`build`·`start`(앞에 `node scripts/preflight.mjs <명령> &&`), `generate:types`·`generate:importmap`(`cross-env NODE_OPTIONS=--no-deprecation payload …`). devDependency `@types/react`·`@types/react-dom` 19.3.0(정확 고정) |
+| `pnpm-lock.yaml` | 위 두 타입 패키지 추가분만 |
+| `.gitignore` | 끝에 `next-env.d.ts` 1줄과 구역 주석만 추가 |
+
+**결정과 근거**
+
+- `serverURL`은 값이 없을 때 `undefined`가 아니라 빈 문자열: Payload 3.93.0 `config/sanitize.js`가 `if (config.serverURL !== '') config.csrf.push(config.serverURL)`로 처리해, `undefined`면 CSRF 허용 목록에 `undefined`가 들어간다(소스 확인). 반대로 값이 있으면 CSRF 허용 목록에 자동으로 들어가므로 `csrf`를 따로 적지 않았다(R14 확인은 M5)
+- `lexicalEditor()` 유지: M1에서 `@payloadcms/richtext-lexical`을 의존성으로 고정했고 템플릿 기본 편집기다. 리치 텍스트 필드가 아직 없어 import map에는 lexical 항목이 생기지 않았다(`CollectionCards` 1개뿐)
+- `@types/react`·`@types/react-dom` 추가: `.tsx` 라우트 파일 타입 검사에 필요(템플릿도 devDependency로 둠). 설치 시점 최신 19.3.0, react 19.3.1과 같은 메이저·마이너
+- `next-env.d.ts`를 무시 목록에 추가(B.5의 "필요할 때만"): `next build`는 `./.next/types/…`, `next dev`는 `./.next/dev/types/…`를 가리키도록 실행할 때마다 다시 쓴다(두 경우 모두 실측). 커밋하면 실행 방식에 따라 계속 변경이 생긴다. 공식 템플릿 `.gitignore`도 무시한다. 참고: `.next`를 치운 상태에서도 `pnpm typecheck`는 종료 코드 0이라(실측), 무시해도 타입 검사가 깨지지 않는다
+- 스크립트의 `cross-env NODE_OPTIONS=--no-deprecation`: 템플릿 형식을 따름(M6의 "모두 `cross-env` 사용"과 일치). `rm -rf`·인라인 대입 없음
+- 통합 테스트 `.env` 로드: `dotenv`(템플릿) 대신 M2와 같은 Node 내장 `process.loadEnvFile`
+
+**TDD 기록**
+
+- RED: 테스트·Vitest 설정만 추가한 상태(설정 파일 없음)에서 `pnpm test` → 종료 코드 1, `Test Files  2 failed | 3 passed (5)`, `Tests  2 failed | 65 passed (67)`. `users-auth.spec.ts`는 파일 단위 실패 `import config from '../../src/payload.config'`(모듈 없음), `config-env.spec.ts` 2건은 `expected [Function] to throw error matching /Missing required environment variable…/ but got 'Cannot find module \'/src/payload.con…'`(`red-verbatim.log`)
+- GREEN: `Users.ts`·`payload.config.ts` 추가 후 `pnpm test` 종료 코드 0, `Tests  72 passed (72)`(단위 65 + 통합 7). 첫 실행에서 Payload 개발 모드 스키마 반영이 동작(`Pulling schema from database...`). 실행 전 `public` 스키마 테이블 0개 → 실행 후 `users`, `users_sessions`, `payload_kv`, `payload_locked_documents(_rels)`, `payload_migrations`, `payload_preferences(_rels)` 생성(R9 — 문제 없음)
+- 변이 확인: `payload.config.ts`의 `assertRequiredEnv(process.env)` 줄을 지우면 `config-env.spec.ts` `Tests  2 failed (2)`(`mutation-config-env.log`). 원본 복원 후 `diff` 동일 확인
+- REFACTOR: 구조 변경 없음(파일 3개, 중복 없음)
+
+**AC 검증** (모두 이 작업 트리, HEAD `27cae41` + 위 변경)
+
+| AC | 명령 | 종료 코드 | 시간 | 결과 끝부분 |
+|---|---|---|---|---|
+| AC-INFRA-006 (통합 부분) | `pnpm test --reporter=verbose` | 0 | 5~8초 | `✓ \|integration\|` 7건(컬렉션 slug, 생성, 올바른 로그인, 틀린 로그인, 삭제, 설정 재검증 2건), `Tests  72 passed (72)`(`green-verbose.log`, `final-test.log`). 실행 뒤 `select count(*) from users` = 0, `users_sessions` 0, `payload_preferences` 0 |
+| AC-INFRA-007 (빈 DB) | `users` 0건 확인 후 `pnpm dev`를 스크립트로 띄우고 `fetch(…, { redirect: 'manual' })`로 요청 | — | 준비까지 11.5초 | `/admin` → HTTP 200 + 본문의 Next 리디렉션 표식 `NEXT_REDIRECT;replace;/admin/login;307;` → `/admin/login` → HTTP 200 + `NEXT_REDIRECT;replace;/admin/create-first-user;307;` → `/admin/create-first-user` → HTTP 200, `<title>Create first user - Payload</title>`. HTTP `Location` 헤더는 세 단계 모두 없음(스트리밍 중 클라이언트 쪽 이동). 종료: 직접 띄운 PID만 `taskkill /T /F`, 이후 3000 포트 바인딩 성공(비어 있음), `netstat` 3000 0건 |
+| AC-INFRA-012 (dev) | `.env` → `.env.bak` 복사, `PAYLOAD_SECRET` 줄 삭제 후 `pnpm dev`(출력 → `missing-env-dev.log`) | 1 | 0.77초 | `[preflight] Missing required environment variables: PAYLOAD_SECRET.` / `Copy .env.example to .env …`. `PAYLOAD_SECRET` 1건, `.env.example` 1건, `Ready`·`Local:` 0건, 비밀번호·`PAYLOAD_SECRET` 값 0건. 정리: `.env.bak` → `.env`, SHA-256 전후 동일(`ad04bc24…`), `.env.bak` 없음 |
+| AC-INFRA-014 (dev) | `docker compose stop postgres` 후 `pnpm dev`(출력 → `db-down-dev.log`) | 1 | 0.57초 | `[preflight] Database connection failed: cannot reach PostgreSQL at 127.0.0.1:5432 (database: sumbi_tour) - ECONNREFUSED.` / `Start the local database with: docker compose up -d`. `docker compose up -d` 1건, `Ready`·`Local:` 0건, 비밀번호·`PAYLOAD_SECRET` 값 0건. 정리: `docker compose start postgres` → `postgres healthy` |
+| AC-INFRA-004 (typecheck) | `pnpm typecheck` | 0 | — | `tsc --noEmit` 오류 0(`final-typecheck.log`) |
+| AC-INFRA-004 (build) | `pnpm build` | 0 | 48초 | `✓ Compiled successfully in 26.3s`, 경로 `/_not-found`, `ƒ /admin/[[...segments]]`, `ƒ /api/[...slug]`, `ƒ /api/graphql`, `ƒ /api/graphql-playground`(`build-1.log`). `/` 페이지 없이도 빌드 성공(홈은 M4) |
+| 생성 명령 | `pnpm generate:types` / `pnpm generate:importmap` | 0 / 0 | — | `Types written to …\src\payload-types.ts` / `Writing import map to …\src\app\(payload)\admin\importMap.js` |
+| R17 | `git check-ignore -v --no-index <신규 15개 경로>` | 1 | — | 출력 없음(무시되는 신규 파일 0개) |
+
+**계획과 다른 점**
+
+- `@types/react`·`@types/react-dom` devDependency 추가(계획 §F 예상 파일 목록에 패키지 단위로는 없었음)
+- `.gitignore`에 `next-env.d.ts` 추가(B.5가 조건부로 허용한 항목)
+- 통합 테스트에 설정 로드 시 재검증 테스트(`config-env.spec.ts`)를 더함(REQ-INFRA-008 두 번째 확인 지점)
+
+**미검증 항목**
+
+- AC-INFRA-007은 브라우저 주소 표시줄이 아니라 HTTP 응답 본문의 Next.js 리디렉션 표식과 이동 대상 페이지 제목으로 확인했다. 실제 브라우저 이동과 "계정 생성 후 `/admin` 대시보드" 단계는 실행하지 않았다(실제 관리자 계정을 만들지 않는다는 지시). 또 `docker compose down -v`로 DB를 비우지 않고, 공유 볼륨을 유지한 채 `users` 0건 상태에서 확인했다
+- AC-INFRA-006의 커버리지(`src/lib/` 85%)와 단위·통합 "1개 이상" 보고 형식의 최종 정리: M5
+- PowerShell `Measure-Command` 미사용(Git Bash와 Node 측정)
+- `next start`(운영 서버 기동)는 실행하지 않음
+- 관리자 화면 실제 렌더링(브라우저), `/admin/login` 폼 제출: M5 E2E 범위
+
+**남은 위험**
+
+- `next dev`가 AI 코딩 에이전트를 감지하면 저장소 루트에 `AGENTS.md`(Next.js 관리 블록)를 만든다(`node_modules/next/dist/server/lib/app-info-log.js` `syncAgentRulesForDev`, 끄려면 `next.config`의 `agentRules: false`). 이번 실행에서 생긴 파일은 커밋하지 않고 지웠다(내용은 `m3/AGENTS.md.generated-by-next-dev`에 보관). 커밋·무시·비활성 중 어느 쪽으로 할지는 결정이 필요하다
+- Payload가 `No email adapter provided. Email will be written to console.` 경고를 매번 출력한다(이메일은 범위 밖이라 의도된 상태)
+- 개발 모드 스키마 반영이 공유 DB의 `payload_migrations`에 개발용 행 1개를 남긴다(Payload 기본 동작). 배포 SPEC에서 마이그레이션 절차를 정할 때 확인이 필요하다
+- `pnpm peers check`가 `vite@8.3.6`의 `esbuild` peer(`^0.27.0 || ^0.28.0`, 설치 0.25.12) 불일치를 보고한다. 이번 변경 전 잠금 파일에 이미 있던 조합이다(`@types/*` 추가 diff에 vite·esbuild 변경 없음)
+- 직접 작성 분량(M1~M3 누적): 물리 줄 1160줄(주석·빈 줄 포함; 소스·설정·테스트 합계), 주석·빈 줄 제외 867줄(소스 235, 테스트 560, 설정 72). 계획 §A의 "직접 작성 LOC 1000 초과 시 차단자 보고" 기준에 측정 방식에 따라 걸린다
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

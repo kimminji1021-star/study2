@@ -247,3 +247,9 @@ coverage/
 playwright-report/
 test-results/
 blob-report/
+
+# ===========================================
+# Next.js 생성 파일 (SPEC-INFRA-001 M3)
+# ===========================================
+# next dev·next build가 실행할 때마다 다시 쓰는 타입 참조 파일(공식 템플릿도 무시한다)
+next-env.d.ts
