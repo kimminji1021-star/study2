@@ -615,7 +615,7 @@ sync_audit:
   actions:
     F4: "e10d04c — dompurify override 3.4.17, pnpm audit 10 → 5건(critical 0)"
     F9_F10: "2a87218 — MX 태그 보완(resolveE2ePort ANCHOR, assertRequiredEnv NOTE)"
-final_verification:  # main, HEAD 2a87218, 로그 .moai/state/verify/a08890a8/final/ov-*.log
+final_verification:  # main, e10d04c 트리(2a87218은 주석만 추가, 그 뒤 pnpm test 98 passed 재확인), 로그 .moai/state/verify/a08890a8/final/ov-*.log
   typecheck: 0
   build: 0
   test: "0 — 98 passed"
@@ -641,9 +641,20 @@ deferred_to_deployment_spec:
   - "남은 pnpm audit 권고 5건(happy-dom high 2, esbuild·minimatch moderate, deepmerge low) — 현재 도달 경로 없음"
   - "개발 스키마 푸시 대신 마이그레이션 사용"
   - "개발 DB의 payload_migrations 행 정리"
+accepted_debt:
+  - item: "PowerShell 7에서 AC-INFRA-003·REQ-INFRA-002 확인 미실행(이 PC에 pwsh 미설치, Windows PowerShell 5.1에서는 전부 통과)"
+    decided_by: "사용자(study2)"
+    decided_at: 2026-11-09
+    residual_risk: "낮음 — npm 스크립트가 node·cross-env만 사용하고 셸 전용 구문이 없다. 다만 pnpm이 7에서 같은 셸을 쓰는지는 실측하지 않았다"
+    revisit_when: "PowerShell 7을 설치하거나 배포 SPEC에서 CI를 도입할 때"
 known_gaps:
-  - "PowerShell 7 미실행(5.1만 확인)"
   - "R14 대비 실험 미실행"
+reaudit:
+  verdict: "FAIL(R1 하나) → 감사 보고서가 제시한 해소 경로 (b)를 사용자가 선택해 R1을 accepted_debt로 이관. 감사자 기준상 §E.4 기록 확인만으로 PASS(부채 포함), 전체 재감사 불필요"
+  scores: "Functionality 85 · Security 85 · Craft 90 · Consistency 88 (조화 평균 87.0)"
+push:
+  pushed_through: 5f94481
+  pushed_after_sync: "e10d04c·2a87218·8b1b3fb·8c12a25 및 이 기록 커밋을 sync 마무리 때 함께 push"
 docs_updated: [CHANGELOG.md, .moai/project/structure.md, .moai/project/tech.md, .moai/project/codemaps/overview.md]
 roadmap_order_changed: false
 ```

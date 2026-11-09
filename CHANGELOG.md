@@ -6,7 +6,7 @@
 
 ### 추가됨
 
-- **SPEC-INFRA-001 프로젝트 기반 구축** (수용 기준 16개 전부 충족)
+- **SPEC-INFRA-001 프로젝트 기반 구축** (수용 기준 16개 충족, 단 PowerShell 7 실행 확인은 부채로 남김 — Windows PowerShell 5.1에서는 전부 통과)
   - Payload CMS 3.93.0과 Next.js 16.4.5를 하나로 실행하는 앱 골격: 사용자 화면 `src/app/(frontend)`과 관리자·API `src/app/(payload)`를 라우트 그룹으로 분리 (`src/payload.config.ts`)
   - 로컬 PostgreSQL: `docker-compose.yml`(프로젝트 이름 `sumbi-tour`, `127.0.0.1` 바인딩, 포트는 `POSTGRES_PORT`로 변경 가능)과 환경 변수 이름 목록 `.env.example`
   - 시작 전 점검: 필수 환경 변수 누락과 DB 연결 실패를 안내 문구와 함께 알리는 `src/lib/preflight.ts`, 실행 진입점 `scripts/preflight.mjs`
