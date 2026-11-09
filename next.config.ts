@@ -8,6 +8,9 @@ import type { NextConfig } from 'next'
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const nextConfig: NextConfig = {
+  // next dev가 AI 에이전트를 감지하면 저장소 루트에 AGENTS.md를 자동 생성한다. 이 저장소의 AI 규칙은
+  // MoAI의 CLAUDE.md로 관리하므로 생성하지 않게 끈다
+  agentRules: false,
   // TypeScript 파일을 .js 확장자로 import해도 찾도록 한다(템플릿 설정 유지)
   webpack: (webpackConfig) => {
     webpackConfig.resolve.extensionAlias = {

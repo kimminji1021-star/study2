@@ -234,6 +234,78 @@ author: manager-spec
 - `pnpm peers check`가 `vite@8.3.6`의 `esbuild` peer(`^0.27.0 || ^0.28.0`, 설치 0.25.12) 불일치를 보고한다. 이번 변경 전 잠금 파일에 이미 있던 조합이다(`@types/*` 추가 diff에 vite·esbuild 변경 없음)
 - 직접 작성 분량(M1~M3 누적): 물리 줄 1160줄(주석·빈 줄 포함; 소스·설정·테스트 합계), 주석·빈 줄 제외 867줄(소스 235, 테스트 560, 설정 72). 계획 §A의 "직접 작성 LOC 1000 초과 시 차단자 보고" 기준에 측정 방식에 따라 걸린다
 
+### M4 — 임시 홈 페이지와 Tailwind
+
+긴 출력은 `.moai/state/verify/a08890a8/m4/`(로컬 전용). 기준 트리: M3 커밋 `f17ae5d` + 아래 변경. 실행 셸: Git Bash. 시간은 `date +%s` 차이(초 단위). Node 24.22.1, pnpm 11.28.9. 기준선: 변경 전 `pnpm test` 종료 코드 0, `Tests  72 passed (72)`(`baseline-test.txt`).
+
+**만든·바꾼 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `src/app/(frontend)/globals.css` (신규) | `@import "tailwindcss";` 한 줄 + 사용 범위 주석 |
+| `src/app/(frontend)/layout.tsx` (신규) | 사용자 화면 루트 레이아웃. `<html lang="ko">`, `metadata`(제목 `숨비투어`), `./globals.css`를 여기서만 import |
+| `src/app/(frontend)/page.tsx` (신규) | 임시 홈. `h1`(`text-4xl font-bold`) "숨비투어", 문구 "서비스를 준비 중입니다." — Tailwind 유틸리티만 사용 |
+| `postcss.config.mjs` (신규) | `@tailwindcss/postcss` 플러그인 1개(Tailwind Next.js 가이드 방식) |
+| `playwright.config.ts` (신규) | `testDir: tests/e2e`, `workers: 1`, `reporter: list`, 테스트 제한 120초, `baseURL`·`webServer`는 `tests/helpers/e2e-env.ts`의 포트 사용. `webServer.command` = `pnpm exec next dev --port <E2E_PORT>`, `port: <E2E_PORT>`, `reuseExistingServer: false`, `timeout: 180_000`, `env.NEXT_PUBLIC_SERVER_URL = http://localhost:<E2E_PORT>` |
+| `tests/helpers/e2e-env.ts` (신규) | `.env`를 `process.loadEnvFile`로 읽고 M2의 `resolveE2ePort`(기본 3100)로 `E2E_PORT`·`E2E_BASE_URL`을 정함. 시작 전 점검과 같은 함수·같은 `.env`를 써서 점검한 포트와 서버 포트가 어긋나지 않게 함 |
+| `tests/e2e/home.spec.ts` (신규) | E2E 2건: `/` 200 + `h1`에 `숨비투어` + `준비 중` 문구 보임 / 빈 페이지에서 잰 `h1` 브라우저 기본 글자 크기가 `36px`이 아님을 단언한 뒤 홈 `h1`이 `36px`(`text-4xl`)임을 단언. 페이지 방문마다 `new URL(page.url()).port` = `String(E2E_PORT)`이고 `'3000'`이 아님을 단언 |
+| `tests/unit/repo-rules.spec.ts` | AC-INFRA-009 3건, AC-INFRA-004 라우트 구조 3건 추가(`readdirSync` 재귀 읽기, 셸 검색 없음, 대상 1건 이상 먼저 단언) |
+| `next.config.ts` | `agentRules: false` + 이유 주석(AI 규칙은 MoAI의 CLAUDE.md로 관리) |
+| `package.json` | 스크립트 `e2e` = `node scripts/preflight.mjs e2e && playwright test`. dependencies `tailwindcss` 4.3.5, `@tailwindcss/postcss` 4.3.5, `postcss` 8.5.32(설치 시점 `latest`, `npm view postcss dist-tags` → `{"latest": "8.5.32"}`), devDependency `@playwright/test` 1.65.0 — 모두 범위 기호 없음 |
+| `pnpm-lock.yaml` | 위 4개 패키지 추가분 |
+
+Chromium: `pnpm exec playwright install chromium` 종료 코드 0(`pw-install.log`).
+
+**결정과 근거**
+
+- 오케스트레이터 결정: `next dev`의 `AGENTS.md` 자동 생성을 `agentRules: false`로 끔. Next 16.4.5 `config-shared.d.ts`: "When `next dev` detects an AI coding agent … auto-generates `AGENTS.md` … Set to `false` to disable this behavior." 비활성 시 `removeAgentRulesFiles`는 루트 `AGENTS.md`의 Next 관리 블록만 다루고 `CLAUDE.md`는 건드리지 않음(소스 `generate-agent-files.js` 확인)
+- 오케스트레이터 결정: Tier는 M 유지. M3 이후 직접 작성 분량(주석·빈 줄 제외) 약 867줄(대부분 테스트)이었고, M4에서 약 200줄(신규 파일 약 100줄 + 저장소 규칙 테스트 약 100줄, 근사치)이 더해졌다. 이 결정은 오케스트레이터가 내렸으며 여기에 기록만 한다
+- Playwright 서버 준비 확인을 `url`이 아니라 `port`로 함(계획과 다른 점): Playwright 1.65.0 `types/test.d.ts` — "If the url is specified, Playwright Test will wait for the URL to return a 2xx, 3xx, 400, 401, 402, or 403 status code". 첫 RED 실행에서 `/`가 404라 `Error: Timed out waiting 180000ms from config.webServer.`로 끝나 테스트 자체가 돌지 않았다(종료 코드 1). 포트 열림으로 바꾸자 RED가 테스트 단언(404, 24px)에서 실패했다. `reuseExistingServer: false`의 점유 포트 거부는 `port`에도 적용된다
+- `webServer.command`는 `pnpm dev`가 아니라 `pnpm exec next dev --port <포트>`: `dev` 스크립트는 포트를 받지 않고 시작 전 점검(`dev` 모드)을 한 번 더 돌린다. `e2e` 스크립트가 이미 `e2e` 모드 점검(환경 변수·DB·포트)을 마친 뒤다
+- 글자 크기 단언 값 `36px`: Tailwind v4 `text-4xl` = `2.25rem`. 비교 기준인 브라우저 기본값은 하드코딩하지 않고 같은 브라우저의 빈 페이지에서 잰다(Tailwind preflight가 `h1` 크기를 초기화하므로 홈 페이지 안에서는 기본값을 잴 수 없다)
+- Tailwind 패키지를 `dependencies`에 둠: 운영 빌드(`next build`)에 필요하며 Tailwind 가이드도 일반 설치(`npm install tailwindcss @tailwindcss/postcss postcss`)
+
+**TDD 기록**
+
+- RED(저장소 규칙): 테스트만 추가한 상태에서 `pnpm exec vitest run --project unit tests/unit/repo-rules.spec.ts` → 종료 코드 1, `Tests  5 failed | 20 passed (25)`(`red-vitest.log`). `(payload)`의 admin·api 존재 검사 1건은 기존 구조로 처음부터 통과(검사 대상이 M3에서 이미 존재)
+- RED(E2E): Playwright 설정·테스트만 있고 페이지가 없는 상태에서 `pnpm e2e` → 종료 코드 1, `2 failed`(`red-e2e.log`): `Expected: 200 / Received: 404`, `Expected: "36px" / Received: "24px"`(`<h1 class="next-error-h1">404</h1>`)
+- GREEN: Tailwind 설치·파일 추가 후 저장소 규칙 `Tests  25 passed (25)`(`green-repo-rules.log`), `pnpm e2e` `2 passed`(`green-e2e.log`)
+- 변이 확인: `src/app/(payload)/custom.scss`(빈 파일)에 `@import "tailwindcss";`를 넣으면 AC-INFRA-009 `Tests  3 failed | 22 passed (25)`(`mutation-payload-tailwind.log`). 복원 후 `git hash-object` = `e69de29…`(빈 파일, 변이 전과 같음)
+- REFACTOR: 저장소 규칙 테스트의 "스타일시트 1개 이상" 단언을 보조 함수(`tailwindStylesheetNames`)로 모음. 그 밖의 구조 변경 없음
+
+**AC 검증** (모두 이 작업 트리, HEAD `f17ae5d` + 위 변경, 순차 실행)
+
+| AC | 명령 | 종료 코드 | 시간 | 결과 끝부분 |
+|---|---|---|---|---|
+| AC-INFRA-004 (typecheck) | `pnpm typecheck` | 0 | 6초 | `tsc --noEmit` 오류 0(`typecheck.log`) |
+| AC-INFRA-004 (build) | `pnpm build` | 0 | 19초 | `✓ Compiled successfully in 9.3s`, `○ /`, `○ /_not-found`, `ƒ /admin/[[...segments]]`, `ƒ /api/[...slug]`, `ƒ /api/graphql`, `ƒ /api/graphql-playground`, `warn` 0줄(`build.log`) |
+| AC-INFRA-004 (라우트 구조) | `pnpm test` | 0 | 7초 | `Test Files  5 passed (5)`, `Tests  78 passed (78)`(`test.log`) — 저장소 규칙 6건 추가분 포함 |
+| AC-INFRA-009 | 위와 같은 `pnpm test` | 0 | — | Tailwind 범위 3건 통과 |
+| AC-INFRA-008 (홈 부분 + 포트 단언) | `pnpm e2e` | 0 | 6초 | `ok 1 … /는 200으로 응답하고 숨비투어 제목과 준비 중 문구를 보여 준다`, `ok 2 … 제목의 글자 크기는 Tailwind 유틸리티 값이며 브라우저 기본값과 다르다`, `2 passed (4.6s)`(`e2e.log`) |
+| R11 (브라우저 확인, 일회성) | 임시 테스트 `tests/e2e/r11-tmp.spec.ts`(실행 후 삭제, 커밋 안 함)로 `pnpm e2e r11-tmp` | 0 | 36초 | 홈: 스타일시트 `src_app_(frontend)_globals_….css`, `--tw-` 있음, `--color-gray-600` 있음, `body` margin `0px`(preflight 적용). 관리자(`/admin/login` → 빈 DB라 `/admin/create-first-user`로 이동): 스타일시트 `_12mkzr0djnql2._.css` 1개, `--tw-`·`--color-gray-600`·`tailwindcss` 모두 없음, 관리자 문서에 넣은 `h1`의 글자 크기 `32px`(preflight가 있었다면 `inherit`로 초기화됨) (`r11-browser.log`) |
+| AGENTS.md | `pnpm dev`(3000 포트)로 띄워 `/` 요청 200 확인 후 `ls AGENTS.md`. E2E 실행(RED·GREEN·R11·최종) 뒤에도 매번 같은 확인 | — | 3초 | `No such file or directory`(매번). 실행 환경에 `CLAUDECODE` 변수가 있어 에이전트 감지 조건은 갖춘 상태(값은 출력하지 않음) |
+| 포트 정리 | 각 실행 뒤 `netstat -ano` 3000·3100 LISTENING 확인 | — | — | 0건. `pnpm dev`는 직접 띄운 프로세스 트리(PID 26556 아래 4개)만 `taskkill /T /F`로 종료. Playwright가 띄운 서버는 Playwright가 스스로 종료 |
+| R17 | `git check-ignore -v --no-index <신규 7개 경로>` | 1 | — | 출력 없음(무시되는 신규 파일 0개) |
+
+**계획과 다른 점**
+
+- Playwright `webServer` 준비 확인을 `url` 대신 `port`로 함(위 근거). R15의 "TCP만 받는 점유 프로세스" 시나리오는 이 선택과 함께 M5에서 다시 확인한다
+- M5 범위 일부를 미리 함: `playwright.config.ts`의 전용 포트·`reuseExistingServer: false`·`webServer.env`·`timeout`, `e2e` 스크립트(위임 지시에 따름). 관리자 로그인 E2E·테스트 관리자 계정 준비·정리는 하지 않음
+
+**미검증 항목**
+
+- `agentRules: false`를 빼면 실제로 `AGENTS.md`가 생기는지(대조 실험): 하지 않음. M3에서 같은 환경으로 생성된 기록(M3 남은 위험)이 있어 추정만 함
+- R11은 관리자 로그인 화면이 아니라 빈 DB에서 이동한 `/admin/create-first-user`에서 확인했다(같은 `(payload)` 레이아웃). 로그인 화면 자체 확인은 M5 E2E
+- E2E는 개발 서버(`next dev`)로만 확인. 운영 서버(`next start`)에서 Tailwind 적용은 확인하지 않음(빌드 산출물 `○ /`는 확인)
+- `E2E_PORT`를 3100이 아닌 값으로 바꿔 실행하는 경우: 단위 테스트(M2의 `resolveE2ePort`)로만 확인
+- PowerShell 실행 미확인(Git Bash만)
+
+**남은 위험**
+
+- `next dev`가 Payload 타입 파일 `src/payload-types.ts`를 같은 내용으로 다시 쓴다. `git status`에 `M`으로 보이지만 `git hash-object` = `HEAD:src/payload-types.ts` = `0e09ed7…`로 내용 변경 없음(커밋에 넣지 않음). 줄바꿈 설정(M6 `.gitattributes`) 전까지 같은 표시가 반복될 수 있다
+- Playwright `port` 준비 확인은 서버가 포트를 연 순간 테스트를 시작하므로, 첫 페이지 컴파일 시간은 각 테스트 제한 시간(120초) 안에서 기다린다. 느린 PC에서는 첫 테스트가 이 시간에 걸릴 수 있다
+- `pnpm peers check`의 `vite@8.3.6` `esbuild` peer 불일치는 그대로(M1부터 있던 항목, 이번 추가와 무관)
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

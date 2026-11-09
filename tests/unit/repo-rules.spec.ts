@@ -1,7 +1,7 @@
 // 저장소 규칙 테스트 — package.json과 설치된 의존성이 SPEC-INFRA-001의 버전 정책을 지키는지 확인한다.
 // 셸 검색 대신 Node에서 직접 파일을 읽어 PowerShell 인용 차이를 피한다.
 // 각 검사는 대상이 1건 이상 있음을 먼저 단언해, 대상이 비어서 통과하는 경우를 막는다.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -262,5 +262,121 @@ describe('AC-INFRA-011 환경 변수 예시 파일', () => {
         'POSTGRES_PORT',
       ]),
     )
+  })
+})
+
+// 디렉터리 아래 파일을 재귀로 모은다. 경로는 저장소 루트 기준, 구분자는 '/'로 통일한다(Windows 역슬래시 대비).
+function listFiles(relativeDir: string): string[] {
+  return readdirSync(path.join(repoRoot, relativeDir), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      path
+        .relative(repoRoot, path.join(entry.parentPath, entry.name))
+        .split(path.sep)
+        .join('/'),
+    )
+    .sort()
+}
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(path.join(repoRoot, relativePath), 'utf8')
+}
+
+const APP_DIR = 'src/app'
+const FRONTEND_DIR = `${APP_DIR}/(frontend)/`
+const PAYLOAD_DIR = `${APP_DIR}/(payload)/`
+const TAILWIND_IMPORT = '@import "tailwindcss"'
+
+// Tailwind 진입 스타일시트(고정 문자열 `@import "tailwindcss"`를 담은 파일)
+function findTailwindStylesheets(): string[] {
+  return listFiles('src').filter((file) => readRepoFile(file).includes(TAILWIND_IMPORT))
+}
+
+// import 문(`import './globals.css'`, `import x from "../globals.css"` 등)에서 모듈 경로만 꺼낸다.
+const IMPORT_SPECIFIER = /\bimport\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g
+
+function importSpecifiers(source: string): string[] {
+  return [...source.matchAll(IMPORT_SPECIFIER)].map((match) => match[1] ?? '')
+}
+
+function tailwindStylesheetNames(): string[] {
+  const names = findTailwindStylesheets().map((file) => path.posix.basename(file))
+  expect(names.length, `${TAILWIND_IMPORT}를 담은 파일이 있어야 한다`).toBeGreaterThanOrEqual(1)
+  return names
+}
+
+describe('AC-INFRA-009 Tailwind 적용 범위', () => {
+  it('@import "tailwindcss"를 담은 파일이 1개 이상 있고 모두 (frontend) 아래에 있다', () => {
+    const stylesheets = findTailwindStylesheets()
+
+    expect(stylesheets.length, `${TAILWIND_IMPORT}를 담은 파일이 있어야 한다`).toBeGreaterThanOrEqual(1)
+    expect(stylesheets.filter((file) => !file.startsWith(FRONTEND_DIR))).toEqual([])
+  })
+
+  it('그 스타일시트를 import하는 파일이 1개 이상 있고 모두 (frontend) 아래에 있다', () => {
+    const names = tailwindStylesheetNames()
+
+    const importers = listFiles('src').filter((file) =>
+      importSpecifiers(readRepoFile(file)).some((specifier) => names.includes(path.posix.basename(specifier))),
+    )
+
+    expect(importers.length, '스타일시트를 import하는 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+    expect(importers.filter((file) => !file.startsWith(FRONTEND_DIR))).toEqual([])
+  })
+
+  it('(payload) 아래 파일은 그 스타일시트 파일명이나 tailwindcss를 참조하지 않는다', () => {
+    const names = tailwindStylesheetNames()
+    const payloadFiles = listFiles(PAYLOAD_DIR)
+    expect(payloadFiles.length, '(payload) 아래에 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    const offenders = payloadFiles.filter((file) => {
+      const source = readRepoFile(file)
+      return source.includes('tailwindcss') || names.some((name) => source.includes(name))
+    })
+    expect(offenders).toEqual([])
+  })
+})
+
+// 라우트 그룹 안 경로를 구간으로 나눈다. 예: 'src/app/(payload)/admin/x/page.tsx' → ['admin', 'x', 'page.tsx']
+function segmentsUnder(groupDir: string, file: string): string[] {
+  return file.slice(groupDir.length).split('/')
+}
+
+const PAGE_FILE = /^page\.(tsx|ts|jsx|js|mdx)$/
+
+describe('AC-INFRA-004 단일 앱 라우트 구조', () => {
+  it('(frontend) 아래에 페이지 파일이 1개 이상 있고 admin·api 경로 구간이 없다', () => {
+    const files = listFiles(FRONTEND_DIR)
+    expect(files.length, '(frontend) 아래에 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    const pages = files.filter((file) => PAGE_FILE.test(path.posix.basename(file)))
+    expect(pages.length, '(frontend) 아래에 page 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    // 마지막 구간(파일 이름)을 뺀 디렉터리 구간만 본다
+    const reserved = files.filter((file) =>
+      segmentsUnder(FRONTEND_DIR, file)
+        .slice(0, -1)
+        .some((segment) => segment === 'admin' || segment === 'api'),
+    )
+    expect(reserved).toEqual([])
+  })
+
+  it('(payload) 아래에 admin 경로와 api 경로가 각각 1개 이상 있다', () => {
+    const files = listFiles(PAYLOAD_DIR)
+    expect(files.length, '(payload) 아래에 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    const firstSegments = files.map((file) => segmentsUnder(PAYLOAD_DIR, file)[0])
+    expect(firstSegments.filter((segment) => segment === 'admin').length).toBeGreaterThanOrEqual(1)
+    expect(firstSegments.filter((segment) => segment === 'api').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('src/app 바로 아래 디렉터리는 (frontend)와 (payload) 두 라우트 그룹뿐이다', () => {
+    const directories = readdirSync(path.join(repoRoot, APP_DIR), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+
+    expect(directories.length).toBeGreaterThanOrEqual(1)
+    expect(directories).toEqual(['(frontend)', '(payload)'])
   })
 })

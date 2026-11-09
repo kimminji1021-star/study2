@@ -12,6 +12,7 @@
     "build": "node scripts/preflight.mjs build && cross-env NODE_OPTIONS=--no-deprecation next build",
     "start": "node scripts/preflight.mjs start && cross-env NODE_OPTIONS=--no-deprecation next start",
     "test": "node scripts/preflight.mjs test && vitest run",
+    "e2e": "node scripts/preflight.mjs e2e && playwright test",
     "typecheck": "tsc --noEmit",
     "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap"
@@ -21,14 +22,18 @@
     "@payloadcms/next": "3.93.0",
     "@payloadcms/richtext-lexical": "3.93.0",
     "@payloadcms/ui": "3.93.0",
+    "@tailwindcss/postcss": "4.3.5",
     "cross-env": "10.1.0",
     "graphql": "16.15.0",
     "next": "16.4.5",
     "payload": "3.93.0",
+    "postcss": "8.5.32",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

@@ -1,0 +1,4 @@
+/* 사용자 화면((frontend)) 전용 전역 스타일시트.
+   (frontend)/layout.tsx에서만 불러온다. Payload 관리자 화면((payload))에서 불러오면
+   Tailwind 기본 스타일(preflight)이 관리자 화면 스타일을 덮어쓴다(plan.md R11, AC-INFRA-009). */
+@import "tailwindcss";
