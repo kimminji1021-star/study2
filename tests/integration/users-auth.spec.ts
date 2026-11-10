@@ -27,14 +27,15 @@ describe('Users 컬렉션 인증(Payload 로컬 API, 실제 DB)', () => {
     }
   })
 
-  it('등록된 컬렉션에서 Payload 시스템 컬렉션을 빼면 users 하나뿐이다', () => {
+  it('등록된 컬렉션에서 Payload 시스템 컬렉션을 빼면 users·media·tours·tour-sessions뿐이다', () => {
     // Payload는 설정에 없는 시스템 컬렉션(payload-preferences, payload-migrations, payload-locked-documents 등)을
     // 스스로 추가한다. 이 컬렉션들은 slug가 모두 `payload-`로 시작하므로 그 접두어로 걸러 낸 뒤 비교한다.
+    // SPEC-TOUR-001 REQ-TOUR-004 / AC-TOUR-001: 정렬 후 정확히 네 개.
     const slugs = payload.config.collections.map((collection) => collection.slug)
     const appSlugs = slugs.filter((slug) => !slug.startsWith('payload-'))
 
     expect(slugs.length).toBeGreaterThan(appSlugs.length)
-    expect(appSlugs).toEqual(['users'])
+    expect([...appSlugs].sort()).toEqual(['media', 'tour-sessions', 'tours', 'users'])
   })
 
   it('Users 레코드를 만들 수 있다', async () => {

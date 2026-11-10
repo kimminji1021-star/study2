@@ -2,7 +2,7 @@
 id: SPEC-TOUR-001
 title: "투어 카탈로그와 회차 — Tours·TourSessions·Media 컬렉션, 투어 목록·상세 화면, 개발용 시드"
 version: "0.1.2"
-status: draft
+status: in-progress
 created: 2026-11-09
 updated: 2026-11-10
 author: study2

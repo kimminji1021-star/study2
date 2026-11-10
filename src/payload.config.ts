@@ -1,5 +1,5 @@
-// Payload 설정 — 공식 with-postgres 템플릿(v3.93.0) 기반. 이 SPEC 범위에 맞춰 Media 컬렉션, sharp,
-// 다국어(localization), 이메일 어댑터는 넣지 않는다(SPEC-INFRA-001 plan.md §B.4).
+// Payload 설정 — 공식 with-postgres 템플릿(v3.93.0) 기반. sharp, 다국어(localization), 이메일 어댑터는
+// 넣지 않는다(SPEC-INFRA-001 plan.md §B.4, SPEC-TOUR-001 plan.md §B.1). 카탈로그 컬렉션은 SPEC-TOUR-001에서 더했다.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -7,8 +7,12 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig } from 'payload'
 
+import { Media } from './collections/Media'
+import { Tours } from './collections/Tours'
+import { TourSessions } from './collections/TourSessions'
 import { Users } from './collections/Users'
 import { assertRequiredEnv } from './lib/preflight'
+import { MAX_UPLOAD_BYTES } from './lib/validation'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -23,8 +27,15 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users],
+  collections: [Users, Media, Tours, TourSessions],
   editor: lexicalEditor(),
+  // REST 멀티파트 요청을 일찍 끊는 보조 수단(SPEC-TOUR-001 plan.md §B.6). 로컬 API에는 적용되지 않으므로
+  // 5MB 판정의 근거는 media 컬렉션의 beforeOperation 훅이다. 정확히 5MB인 REST 업로드가 막히지 않게 같은 값으로 둔다.
+  upload: {
+    limits: {
+      fileSize: MAX_UPLOAD_BYTES,
+    },
+  },
   secret: process.env.PAYLOAD_SECRET ?? '',
   // 사이트 주소. Payload는 빈 문자열이 아닌 serverURL을 CSRF 허용 목록에 자동으로 넣는다
   // (E2E 서버가 다른 포트를 쓸 때 이 값을 덮어쓴다 — plan.md R14, M5에서 확인).
