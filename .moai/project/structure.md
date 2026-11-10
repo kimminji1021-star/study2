@@ -1,6 +1,6 @@
 # 구조 설계 (structure.md)
 
-> 상태: **기반 구축 완료(SPEC-INFRA-001, 2026-11-09)** — 앱 골격·테스트·도구 구성은 §2.1의 실제 구조를 따릅니다. §2의 기능 경로(로케일 라우팅, 투어·신청 화면 등)는 이후 SPEC에서 만들 예정인 제안 구조입니다.
+> 상태: **기반 구축 완료(SPEC-INFRA-001, 2026-11-09)**, **투어 카탈로그 완료(SPEC-TOUR-001, 2026-11-10)** — 실제 구조는 §2.1을 따릅니다. §2의 기능 경로 중 로케일 라우팅·신청·회원 화면은 이후 SPEC에서 만들 예정인 제안 구조입니다.
 
 ## 1. 전체 방향
 
@@ -14,7 +14,8 @@ study2/
 │   ├── app/
 │   │   ├── (frontend)/
 │   │   │   └── [locale]/              # ko / en 로케일 라우팅
-│   │   │       ├── page.tsx           # 랜딩(투어 목록)
+│   │   │       ├── page.tsx           # 랜딩
+│   │   │       ├── tours/             # 투어 목록(SPEC-TOUR-001에서 별도 경로로 확정)
 │   │   │       ├── tours/[slug]/      # 투어 상세 + 회차 선택
 │   │   │       ├── apply/             # 신청 폼 / 접수 완료
 │   │   │       ├── login/ signup/     # 회원 인증
@@ -47,22 +48,41 @@ study2/
 | `src/i18n` | 컬렉션 데이터가 아닌 고정 UI 문구 번역 |
 | `tests/` | 테스트 종류별 분리 |
 
-### 2.1 현재 실제 구조 (SPEC-INFRA-001 완료 시점)
+### 2.1 현재 실제 구조 (SPEC-TOUR-001 완료 시점)
 
 ```text
 study2/
 ├── src/
 │   ├── app/
-│   │   ├── (frontend)/            # layout.tsx, page.tsx(임시 홈), globals.css
+│   │   ├── (frontend)/            # layout.tsx, page.tsx(홈, 투어 목록 링크), globals.css
+│   │   │   ├── tokens.css         # 디자인 토큰(사용자 화면 범위만, --admin-* 제외)
+│   │   │   ├── not-found.tsx      # 사용자 화면 404
+│   │   │   └── tours/
+│   │   │       ├── page.tsx       # 투어 목록 /tours
+│   │   │       └── [slug]/page.tsx  # 투어 상세 /tours/[slug]
 │   │   └── (payload)/             # Payload 템플릿 생성 파일(admin/, api/, layout.tsx, custom.scss)
 │   ├── collections/
-│   │   └── Users.ts               # 관리자 인증 컬렉션
+│   │   ├── Users.ts               # 관리자 인증 컬렉션
+│   │   ├── Tours.ts               # 투어
+│   │   ├── TourSessions.ts        # 투어 회차
+│   │   └── Media.ts               # 업로드 이미지(JPEG·PNG·WebP, 5MB 이하)
+│   ├── components/                # 화면 공통 조각: TourCard, TourImage, SessionList, StatusBadge
 │   ├── lib/
-│   │   └── preflight.ts           # 환경 변수·DB 연결 시작 전 점검(단일 모듈)
+│   │   ├── preflight.ts           # 환경 변수·DB 연결 시작 전 점검(단일 모듈)
+│   │   ├── access.ts              # 관리자 판정·컬렉션 읽기 규칙
+│   │   ├── catalog.ts             # 카탈로그 조회 계층(익명 권한으로만 조회)
+│   │   ├── catalog-order.ts       # 목록·회차 정렬
+│   │   ├── session-availability.ts  # 남은 자리 계산(단일 계산 지점)
+│   │   ├── format.ts              # 서울 시각·가격·자리 표시
+│   │   ├── status-badge.ts        # 회차 배지 문구·색
+│   │   ├── validation.ts          # 컬렉션 입력 검증
+│   │   └── seed.ts                # 개발용 시드 데이터와 실행 거부 판정
 │   ├── payload.config.ts
 │   └── payload-types.ts           # Payload 생성 타입
 ├── scripts/
-│   └── preflight.mjs              # dev·test 시작 전 점검 실행 진입점
+│   ├── preflight.mjs              # dev·test 시작 전 점검 실행 진입점
+│   └── seed.ts                    # pnpm seed 진입점(거부 판정 뒤 설정을 불러옴)
+├── media/                         # 업로드 파일 저장 위치(git 제외, 배포 시 Supabase Storage로 전환 예정)
 ├── tests/
 │   ├── unit/                      # 점검 로직, CLI, 저장소 규칙(repo-rules.spec.ts)
 │   ├── integration/               # 설정·환경 변수, Users 인증(실제 DB)
@@ -82,6 +102,7 @@ study2/
 
 - `src/app/(payload)` 아래 "DO NOT MODIFY" 표시가 있는 템플릿 파일 3개는 Prettier 규칙에 맞춰 포맷만 바뀌었습니다. Payload 업그레이드로 재생성하면 포맷 차이가 다시 생길 수 있습니다.
 - 계획 단계에서 선택 사항이던 `docker-compose.yml`은 필수 구성으로 확정되었습니다.
+- 투어 목록은 랜딩과 별도 경로 `/tours`로 두기로 SPEC-TOUR-001에서 정했습니다(`design/handoff.md` §1의 "확인 필요" 항목 해소). 로케일 접두어(`[locale]`)는 다국어 SPEC에서 붙입니다.
 
 ## 3. Payload 컬렉션 설계 (개념 수준)
 
@@ -96,6 +117,7 @@ study2/
 
 설계 메모:
 
+- 구현 현황: `Tours`·`TourSessions`·`Media`는 SPEC-TOUR-001에서 구현했습니다. 다국어 필드(제목·설명·집결 장소·가격 안내·대체 텍스트의 영어 값)는 다국어 SPEC으로 미뤘고 현재는 한국어 단일 값입니다. 회차 점유 인원과 마감 상태는 신청 흐름 SPEC에서 추가합니다.
 - `Members`와 `Users`는 서로 다른 인증 컬렉션으로 분리합니다. 회원은 관리자 화면에 접근할 수 없어야 합니다.
 - 정원은 신청 인원 수 합계로 차감합니다(3명 신청 = 3자리). 자동 마감·취소 복원 차단·대시보드 모두 이 합계를 기준으로 합니다.
 - 정원 자동 마감은 신청 생성 시점에 서버에서 확인합니다. 동시 신청으로 정원을 넘기지 않도록 트랜잭션 또는 잠금으로 처리해야 합니다. 이는 자동 마감 결정에서 도출한 요구사항(가정, `product.md` §8.2)이며, 구체 방식은 신청 흐름 SPEC에서 결정합니다.

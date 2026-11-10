@@ -1,7 +1,7 @@
 # SPEC-TOUR-001 (compact) — 투어 카탈로그와 회차
 
 > run 단계용 요약본. 원본: `spec.md`(요구사항·용어·가정), `acceptance.md`(수용 기준), `plan.md`(결정·마일스톤·위험), `interview.md`(사용자 결정). 내용이 다르면 원본이 우선한다.
-> Tier M · status: draft · 문서 버전 0.1.2(plan-audit 1회차 D1~D14, 2회차 N1·N2 반영) · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 · 의존: SPEC-INFRA-001(completed) · 기준 HEAD `ff00406`
+> Tier M · status: completed · 문서 버전 0.1.2(plan-audit 1회차 D1~D14, 2회차 N1·N2 반영) · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 · 의존: SPEC-INFRA-001(completed) · 기준 HEAD `ff00406`
 
 ## 사용자 결정 (구속)
 

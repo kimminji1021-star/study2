@@ -219,14 +219,14 @@ MX 태그 확인(`src/` 검색): 계산 지점 `@MX:ANCHOR`(`session-availabilit
 ```yaml
 run_status: audit-ready
 run_complete_at: 2026-11-10
-run_commit_sha: pending-backfill   # M6 커밋 자신(커밋은 자기 SHA를 담을 수 없음). M6 SHA는 완료 보고와 git log로 확인
+run_commit_sha: 57a828a   # M6 커밋(sync 단계에서 기록)
 milestones:
   M1: a3cc21c   # 데이터 모델과 접근 규칙
   M2: eaecd30   # 남은 자리·표시 도우미
   M3: 8dd69f1   # 카탈로그 조회 계층
   M4: 9fc8751   # 화면: 토큰, 공통 조각, 목록·상세·404, 홈 링크
   M5: 4e4e5ba   # 개발용 시드
-  M6: pending-backfill   # 회귀 정리와 품질 게이트(이 기록)
+  M6: 57a828a   # 회귀 정리와 품질 게이트
 m1_to_mN_commit_strategy: 마일스톤마다 커밋 하나, 경로 명시 스테이징, 푸시하지 않음(origin/main = ff00406)
 ac_pass_count: 16
 ac_fail_count: 0
@@ -283,4 +283,71 @@ residual_risks:
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<sync 단계에서 작성>_
+```yaml
+sync_status: complete
+sync_complete_at: 2026-11-10
+sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+frontmatter_status_transitions:
+  spec_md: "in-progress → completed (3-phase close, sync 커밋에 합침)"
+  spec_compact_md: "status 줄 completed로 맞춤"
+sync_audit:
+  verdict: PASS
+  score_harmonic: 92.5
+  score_weighted: 92.85
+  dimensions: {functionality: 95, security: 90, craft: 92, consistency: 93}
+  blocking_findings: 0
+  report: .moai/reports/sync-audit/SPEC-TOUR-001-2026-11-10.md   # 추적하지 않는 파일
+sync_evidence_head: 57a828a   # 오케스트레이터 로그 .moai/state/verify/a08890a8/tour-sync/
+sync_evidence:
+  typecheck: 0
+  lint: 0
+  format_check: 0
+  build: 0
+  vitest: "275 passed (src/lib 라인 100%)"
+  e2e: "26 passed (오케스트레이터 실행 + 감사자 재실행)"
+  pnpm_audit: "5건, critical 0 — SPEC-INFRA-001과 같음, 새 의존성 없음, 배포 SPEC으로 미룸"
+  dev_db: "시드 투어 3(hallasan-yeongsil, udo-bike, haenyeo-experience)·회차 7, 실제 관리자 1"
+b12_self_test:
+  a_pre_emission_grep: "grep -c 'SPEC-TOUR-001' CHANGELOG.md → 0"
+  b_ac_count: "acceptance.md 고유 AC-ID 18개 = AC-TOUR 16개 + 회귀 참조 AC-INFRA-009·010. CHANGELOG 항목은 16개로 기록"
+  c_path_check: "CHANGELOG가 인용한 경로 21개 ls 확인, 누락 0"
+changelog_entry_position: "[Unreleased] > 추가됨 첫 항목(SPEC-INFRA-001 위)"
+required_findings:
+  F7: "해결 — structure.md에 /tours 목록 경로, src/components/, 새 src/lib 모듈, scripts/seed.ts, media/ 추가. design/handoff.md의 '확인 필요'는 structure.md §2.1 메모에 해소 기록"
+  F8: "해결 — §E.3 run_commit_sha·M6를 57a828a로 기록"
+  F9: "수용한 차이로 기록 — 아래 accepted_divergences 참조"
+deferred_optional_findings:   # 사용자 결정: 기록만, 코드 변경 없음
+  F1: "access.ts:39 — 대표 이미지가 있는 공개 투어가 없으면 익명 GET /api/media가 403일 수 있음(가설, 미실행)"
+  F2: "access.ts:15 — adminOnly에 별도 @MX:ANCHOR 없음(isAdmin ANCHOR가 포괄)"
+  F3: "session-availability.ts:28 — ANCHOR 직접 호출자 1곳, 유지(조치 불필요)"
+  F4: "catalog.ts:131-133 — limit: 1과 pagination: false 동시 지정(slug 고유라 결과 같음)"
+  F5: "tours/[slug]/page.tsx — generateMetadata 없음, SEO·다국어 SPEC에서 다룸"
+  F6: "seed.ts:38 — NODE_ENV 비교가 대소문자 구분(호스트 판정이 원격 DB를 막음)"
+accepted_divergences:
+  - "F9: PowerShell 전용 확인(AC-TOUR-009·013·016)은 워크트리 가드가 powershell.exe를 막아 같은 판정을 Node/Bash로 실행했다. 관리자 화면 확인(AC-TOUR-002·004)과 시드 화면 확인(AC-TOUR-016)은 자동화 확인이며 사람이 눈으로 본 확인은 아니다. 필요하면 사용자가 PowerShell 5.1에서 다시 확인한다"
+  - "5MB 판정은 max(size, data.length) 사용"
+  - "next/image unoptimized 사용, images.localPatterns 설정 없음"
+  - "시드 진입점이 거부 판정 뒤 설정을 동적으로 불러옴"
+  - "회차 배지에 '자리 없음'·'지난 회차' 문구 추가"
+  - "다가오는 회차를 DB에서 먼저 거르고 단일 계산 지점에서 다시 판정"
+  - "README 시드 절 위치"
+  - "도우미 formatSeats·splitParagraphs·status-badge.ts 추가"
+  - "(frontend)/not-found.tsx 추가"
+  - "토큰을 src/app/(frontend)/tokens.css로 복사, --admin-* 제외"
+residual_risks:
+  - "시드 회차는 실행일 기준이라 약 열흘 뒤 모두 지난 회차가 됨. 다시 받으려면 회차 → 투어 순으로 지운 뒤 재실행"
+  - "이미지 주소는 serverURL을 붙인 절대 주소 — 배포에서 NEXT_PUBLIC_SERVER_URL을 정확히 설정해야 함"
+  - "업로드 저장소가 로컬 media/ — 배포 SPEC에서 Supabase Storage로 전환"
+  - "PostgreSQL 컨테이너가 M4 도중 한 번 종료 코드 255로 멈춤(원인 미상)"
+  - "E2E 로그의 pg DeprecationWarning"
+docs_updated:
+  - CHANGELOG.md
+  - .moai/project/structure.md
+  - .moai/project/tech.md
+  - .moai/project/codemaps/overview.md
+  - .moai/project/product.md
+  - .moai/specs/SPEC-TOUR-001/spec.md   # frontmatter status만
+  - .moai/specs/SPEC-TOUR-001/spec-compact.md   # status 줄만
+  - .moai/specs/SPEC-TOUR-001/progress.md
+canary_compliance_check: not-applicable
+```

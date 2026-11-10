@@ -96,7 +96,16 @@
 - 로컬 DB는 Docker Compose(프로젝트 이름 `sumbi-tour`)로 실행하며 `127.0.0.1`에만 바인딩합니다. 포트는 `.env`의 `POSTGRES_PORT`로 바꿀 수 있습니다(5433 변경 확인 완료).
 - 간접 의존성 `dompurify`는 `overrides`로 3.4.17에 고정했습니다(상위 패키지가 따라오면 제거).
 
+### 8.1 투어 카탈로그 결정 사항 (SPEC-TOUR-001)
+
+- 새 패키지는 추가하지 않았습니다(잠금 파일 변경 없음).
+- `sharp`는 의도적으로 설치하지 않았습니다. 따라서 Payload 이미지 자르기·크기 변환을 쓰지 않고, `next/image`는 `unoptimized`로 Payload 파일 주소를 그대로 씁니다.
+- 투어 목록·상세 화면은 `next/server`의 `connection()`으로 요청 시점에 렌더링합니다. 관리자가 바꾼 내용이 다시 빌드하지 않아도 바로 반영됩니다.
+- 업로드 이미지는 Payload 로컬 저장소(저장소 루트 `media/`, git 제외)에 둡니다. 파일 주소는 `serverURL`(`NEXT_PUBLIC_SERVER_URL`)을 붙인 절대 주소입니다.
+
 배포 SPEC으로 넘긴 항목:
+
+- 업로드 저장소를 로컬 `media/`에서 Supabase Storage(S3 어댑터)로 전환하고, 이미지 주소가 운영 주소로 만들어지도록 `NEXT_PUBLIC_SERVER_URL`을 정확히 설정
 
 - `NEXT_PUBLIC_SERVER_URL`이 비어 있으면 CSRF 허용 목록이 비게 됩니다. 운영에서는 이 값을 필수로 하거나 `csrf`를 명시적으로 설정해야 합니다.
 - 남은 `pnpm audit` 권고 5건(happy-dom high 2건, esbuild·minimatch moderate, deepmerge low) 재평가
