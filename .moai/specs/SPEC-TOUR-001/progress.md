@@ -82,9 +82,28 @@ GREEN(`pnpm test`, 종료 코드 0): `Test Files 13 passed (13)`, `Tests 215 pas
 
 품질: `pnpm typecheck` 0, `pnpm lint` 0, `pnpm format:check` 0(`All matched files use Prettier code style!`). 정리 확인(DB): `tours` `test-%` 0, `users` `%@example.test` 0, `tour_sessions` 0, `media` `test-%` 0, 전체 `users` 1(실제 관리자), `media/` 파일 0.
 
+커밋: `eaecd30` `feat(SPEC-TOUR-001): M2 남은 자리·표시 도우미`(pre-commit `moai gate` 통과)
+
+### M3 — 카탈로그 조회 계층
+
+RED(구현 전, `npx vitest run --project integration --coverage.enabled=false tests/integration/catalog-query.spec.ts`, 종료 코드 1): `Test Files 1 failed (1)`, `Tests no tests`. 실패 — `Error: Cannot find module '../../src/lib/catalog'`. 모듈을 불러오기 전에 실패하므로 준비 데이터는 만들어지지 않았다. 로그: `.moai/state/verify/a08890a8/tour-m3/red-test.log`
+
+GREEN(`pnpm test`, 종료 코드 0): `Test Files 14 passed (14)`, `Tests 228 passed (228)`. 커버리지 `src/lib/` 라인 100%(153/153), 분기 91.97%(`catalog.ts` 분기 81.48% — 막힌 이미지 ID·`url` 없음·공개 투어 0건·관계 객체 형태의 방어 분기). 로그: `.moai/state/verify/a08890a8/tour-m3/final-test.log`
+
+접근 규칙 변이 확인: `src/lib/catalog.ts`의 `overrideAccess`를 잠시 `true`로 바꾸고 `catalog-query.spec.ts`만 실행 → 종료 코드 1, `Tests 6 failed | 7 passed (13)`(공개되지 않은 투어 노출, 비공개 slug 상세가 null 아님, 호출 기록 단언 실패 등). 되돌린 뒤 통과. 로그: `.moai/state/verify/a08890a8/tour-m3/mutation-override-true.log`
+
+| AC | 상태 | 확인 방법 | 결과 |
+|---|---|---|---|
+| AC-TOUR-006 (조회 계층 부분) | PASS | `tests/integration/catalog-query.spec.ts` | 목록에 공개 투어 4개만(비공개 H 없음), H의 회차(정원 7)·제목·이미지가 목록·상세 결과 어디에도 없음, H의 slug 상세 → `null`. 목록·상세의 모든 `payload.find` 호출이 `overrideAccess: false`, `user`·`req` 없음(호출 기록) |
+| REQ-TOUR-009 정렬·가장 가까운 회차 | PASS | 같은 파일 | 표식 투어 순서 `+1일 → +2일 → (마감만, 나) → (회차 없음, 다)` — 제목 순과 반대로 골라 시작 시각 정렬을 확인. 가장 가까운 회차 정원 11, `{capacity: 11, remainingSeats: 11, selectable: true, reason: null}`. 마감만·회차 없음 → `null`. `now`를 +30일로 넘기면 모두 `null`, 제목 순 |
+| REQ-TOUR-010 상세 회차 | PASS | 같은 파일 | 정원 순서 `[11, 13, 12]`(시작 시각 순), 선택 가능 `[true, false, true]`, 마감 사유 `closed`, 지난 회차(정원 19) 없음. 회차 없는 공개 투어 → `sessions: []`. 설명(빈 줄 포함)·집결 장소·대표 이미지(대체 텍스트, 주소에 파일명, 가로 1) |
+| 없는 slug / 형식 오류 slug | PASS | 같은 파일 | `<표식>-missing` → `null`. `Not_A_Slug`·빈 문자열 → `null`이고 DB 조회 0회 |
+
+품질: `pnpm typecheck` 0, `pnpm lint` 0, `pnpm format:check` 0. `git diff --stat a3cc21c -- pnpm-lock.yaml package.json .prettierignore eslint.config.mjs pnpm-workspace.yaml` 출력 없음. 정리 확인(DB): `tours` `test-%` 0, `users` `%@example.test` 0, `tour_sessions` 0, `media` `test-%` 0, 전체 `users` 1, `media/` 파일 0.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<run 단계 완료 시 작성 — M1~M2 완료, M3~M6 남음>_
+_<run 단계 완료 시 작성 — M1~M3 완료, M4~M6 남음>_
 
 ## §F Phase 4 Mode Selection
 
