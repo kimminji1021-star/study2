@@ -184,9 +184,95 @@ GREEN·최종:
 
 시드 데이터는 개발 DB에 남겨 두었다(사용자 개발 데이터). 정리 확인(최종 E2E 뒤): 전체 `users` 1, `users` `%@example.test` 0, `tours` `test-%` 0, 표식 회차 0, `media` `test-%` 0, 시드 투어 3·회차 7. 로그: `cleanup-db.log`
 
+커밋: `4e4e5ba` `feat(SPEC-TOUR-001): M5 개발용 시드`
+
+### M6 — 회귀 정리와 품질 게이트
+
+최종 트리(HEAD `4e4e5ba`, 작업 트리 변경 없음)에서 `plan.md` §E-1 순서대로 실행했다. 이 마일스톤은 새 동작을 더하지 않으므로 새 RED는 없다(M1~M5의 RED 기록이 각 동작의 근거). 로그: `.moai/state/verify/a08890a8/tour-m6/`
+
+| 단계 | 명령 | 결과 | 로그 |
+|---|---|---|---|
+| DB | `docker compose ps --format '{{.Service}} {{.Health}}'` | `postgres healthy` | `compose-ps.log` |
+| 생성 파일 | `pnpm generate:types`, `pnpm generate:importmap` | 0, 0. 이후 `git status --short` 출력 없음(두 생성 파일이 커밋된 상태와 같음) | `gen-types.log`, `gen-importmap.log` |
+| 타입 | `pnpm typecheck` | 0 | `typecheck.log` |
+| 빌드 | `pnpm build` | 0. 경로 표 `○ /`, `ƒ /tours`, `ƒ /tours/[slug]` | `build.log` |
+| 사전 렌더링 목록(AC-TOUR-013) | Node로 같은 판정 | `app-path /tours: true`, `app-path /tours/[slug]: true`, `prerender routes has /: true`, `prerender routes has /tours: false`, `dynamicRoutes has /tours/[slug]: false`, routes 키 `["/","/_global-error","/_not-found"]` | `prerender-manifest.log` |
+| 단위·통합·저장소 규칙 | `pnpm test` | 0. `Test Files 17 passed (17)`, `Tests 275 passed (275)` | `final-test.log` |
+| 커버리지 | `coverage/coverage-summary.json` total | 라인 100%(201/201), 분기 91.87%(147/160). 파일별 라인 모두 100% | `coverage-total.log` |
+| E2E | `pnpm e2e` | 0. `26 passed (30.7s)`(기존 4 + 이 SPEC 22) | `final-e2e.log` |
+| 린트 | `pnpm lint` | 0 | `lint.log` |
+| 포맷 | `pnpm format:check` | 0, `All matched files use Prettier code style!` | `format.log` |
+| 의존성·검사 설정 | `git diff --stat ff00406 -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml` | 출력 없음. `package.json` 차이는 `seed` 스크립트 한 줄뿐 | — |
+| SPEC-INFRA-001 유지 | `git diff --stat ff00406 -- src/lib/preflight.ts scripts/preflight.mjs tests/helpers/e2e-env.ts vitest.config.mts src/collections/Users.ts "src/app/(payload)" playwright.config.ts docker-compose.yml .env.example .gitattributes prettier.config.mjs` | 출력 없음. AC-INFRA-* 저장소 규칙·홈 E2E는 위 `pnpm test`·`pnpm e2e`에서 계속 통과 | — |
+| 범위 밖 경로 | `git diff --name-only ff00406` 중 `.claude/`·`.github/`·`.git_hooks/`·`CLAUDE.md`·`.mcp.json`·`.moai/project/`·`.moai/state/`·`AGENTS.md`·`media/`·`.env` | 0건(변경 파일 54개) | `changed-files.log` |
+
+| AC | 상태 | 확인 방법 | 결과 |
+|---|---|---|---|
+| AC-TOUR-009 | PASS | 위 표 + DB·`media/` 정리 확인 | `pnpm test`·`pnpm e2e` 모두 0, `src/lib/` 라인 100%(기준 85%). 두 명령 뒤 `tours` `test-%` 0, `users` `%@example.test` 0, 표식 회차 0, `media` `test-%` 0, 전체 `users` 1. `media/` 있음 `true`, `test-*` 파일 0(`cleanup-db.log`). `git check-ignore -q media/probe.png` → 0 |
+
+MX 태그 확인(`src/` 검색): 계산 지점 `@MX:ANCHOR`(`session-availability.ts`)와 신청 SPEC 확장 지점 `@MX:NOTE`(`session-availability.ts`·`catalog.ts`·`SessionList.tsx`), 미디어 읽기 조건 `@MX:DEBT` + `@MX:CEILING` + `@MX:UPGRADE`(`access.ts`), 시드 거부 `@MX:NOTE`·멱등성 `@MX:NOTE`(`seed.ts`). ANCHOR·WARN에는 모두 `@MX:REASON`이 있다. 파일별 한도(ANCHOR 3, WARN 5, NOTE 10) 안
+
+정리: 포트 3100·3101 비어 있음(3101은 M5 화면 확인에 직접 띄웠다가 종료). 3000은 작업 전부터 있던 프로세스로 건드리지 않음. 임시 확인 스크립트는 저장소 밖(세션 임시 폴더)에만 두었다
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<run 단계 완료 시 작성 — M1~M4 완료, M5~M6 남음>_
+```yaml
+run_status: audit-ready
+run_complete_at: 2026-11-10
+run_commit_sha: pending-backfill   # M6 커밋 자신(커밋은 자기 SHA를 담을 수 없음). M6 SHA는 완료 보고와 git log로 확인
+milestones:
+  M1: a3cc21c   # 데이터 모델과 접근 규칙
+  M2: eaecd30   # 남은 자리·표시 도우미
+  M3: 8dd69f1   # 카탈로그 조회 계층
+  M4: 9fc8751   # 화면: 토큰, 공통 조각, 목록·상세·404, 홈 링크
+  M5: 4e4e5ba   # 개발용 시드
+  M6: pending-backfill   # 회귀 정리와 품질 게이트(이 기록)
+m1_to_mN_commit_strategy: 마일스톤마다 커밋 하나, 경로 명시 스테이징, 푸시하지 않음(origin/main = ff00406)
+ac_pass_count: 16
+ac_fail_count: 0
+ac_matrix:   # automated = pnpm test / pnpm e2e가 매번 확인, manual = 사람이 아닌 일회성 확인 포함
+  AC-TOUR-001: {status: PASS, automated: integration}
+  AC-TOUR-002: {status: PASS, automated: integration + repo-rules, manual: "관리자 업로드 화면 자르기·초점 도구 없음 — 임시 Playwright(M1)"}
+  AC-TOUR-003: {status: PASS, automated: integration}
+  AC-TOUR-004: {status: PASS, automated: integration, manual: "관리자 일시 입력이 서울 기준으로 저장됨 — 임시 Playwright, 브라우저 시간대 뉴욕(M1)"}
+  AC-TOUR-005: {status: PASS, automated: integration + unit}
+  AC-TOUR-006: {status: PASS, automated: integration(로컬 API·조회 계층) + e2e(REST·GraphQL·파일 주소)}
+  AC-TOUR-007: {status: PASS, automated: integration}
+  AC-TOUR-008: {status: PASS, automated: unit}
+  AC-TOUR-009: {status: PASS, automated: "pnpm test·pnpm e2e 종료 코드 + 커버리지 임계값", manual: "실행 뒤 DB·media/ 정리 조회(M6)"}
+  AC-TOUR-010: {status: PASS, automated: e2e}
+  AC-TOUR-011: {status: PASS, automated: e2e}
+  AC-TOUR-012: {status: PASS, automated: e2e}
+  AC-TOUR-013: {status: PASS, automated: repo-rules + e2e, manual: "빌드 뒤 사전 렌더링 목록 판정(M4·M6, Node)"}
+  AC-TOUR-014: {status: PASS, automated: repo-rules + e2e}
+  AC-TOUR-015: {status: PASS, automated: e2e}
+  AC-TOUR-016: {status: PASS, automated: unit + integration + repo-rules, manual: "pnpm seed 2회·거부 2종·/tours HTML 확인(M5)"}
+invariants:
+  preserve_list_post_run_count: 0      # preflight·e2e 포트·Users·커버리지 설정·(payload) 템플릿·검사 제외 목록·잠금 파일 변경 0건
+  lockfile_unchanged: true
+  generated_files_in_sync: true        # generate:types·generate:importmap 뒤 git status 비어 있음
+  new_warnings_or_lints_introduced: 0
+coverage_src_lib: {lines: "100% (201/201)", branches: "91.87% (147/160)", threshold_lines: 85}
+test_counts: {vitest: 275, e2e: 26}
+cross_platform_build:
+  windows: "pnpm build 0 (이 PC, Windows 11, Node 24)"
+  other_os: not-run   # 이 단계에서 다른 OS 빌드는 실행하지 않음. CI가 맡는다
+l44_pre_commit_fetch: not-run   # 지시에 따라 푸시하지 않음, 원격 갱신 확인도 하지 않음
+l44_post_push_fetch: not-applicable
+total_run_phase_files: 54   # git diff --name-only ff00406 (SPEC 문서 6개 포함)
+dev_db_state_after_run: {users_total: 1, test_data: 0, seed_tours: 3, seed_sessions: 7}
+known_gaps:
+  - "PowerShell 전용 확인(사전 렌더링 목록의 ConvertFrom-Json 판정, AC-TOUR-009의 Test-Path·Get-ChildItem, AC-TOUR-016의 $env: 거부·*> 로그·Select-String)은 같은 판정을 Node/Bash로 실행했다 — 이 워크트리 격리 에이전트에서 powershell.exe 실행이 차단됨. 판정 대상 파일·값·명령(pnpm seed)은 같다"
+  - "AC-TOUR-016 화면 확인은 임시 next dev(3101)에서 받은 HTML의 제목·배지 문자열 확인이다. 사람이 브라우저로 본 확인은 아니다"
+  - "AC-TOUR-002·004 수동 확인은 M1의 임시 Playwright 확인이며 사람이 관리자 화면을 직접 조작한 기록은 아니다"
+  - "다른 OS(macOS·Linux) 빌드·테스트는 이 단계에서 실행하지 않았다"
+residual_risks:
+  - "시드 회차는 실행일 기준(+3·+5·+10일)이라 열흘이 지나면 모두 지난 회차가 되고, 다시 실행해도 slug가 있어 건너뛴다. 새로 받으려면 관리자 화면에서 시드 투어의 회차 → 투어를 지운 뒤 다시 실행해야 한다"
+  - "시드 되돌리기는 같은 연결에서 회차 → 투어를 지우는 방식이다. 되돌리기 자체가 실패하면(예: DB 연결 끊김) 회차가 빠진 투어가 남을 수 있다"
+  - "공용 PostgreSQL 컨테이너가 M4 도중 한 번 종료 코드 255로 멈췄다(원인 미상, 재시작 정책 없음). M5·M6에서는 재발하지 않았다"
+  - "서울 시각 계산은 UTC+9 고정(일광 절약 시간 없음)을 전제로 한다"
+  - "src/lib/ 분기 커버리지 91.87% — 남은 분기는 catalog.ts의 방어 분기(막힌 이미지 ID·url 없음 등)와 기본 인자"
+```
 
 ## §F Phase 4 Mode Selection
 
