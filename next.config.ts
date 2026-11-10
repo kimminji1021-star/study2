@@ -1,4 +1,6 @@
-// Next.js 설정 — 공식 with-postgres 템플릿(v3.93.0) 기반. Media 컬렉션이 없으므로 이미지 경로 허용(images.localPatterns)은 뺐다.
+// Next.js 설정 — 공식 with-postgres 템플릿(v3.93.0) 기반. 템플릿의 이미지 경로 허용(images.localPatterns)은 두지 않는다:
+// 투어 이미지는 sharp 없이 원본을 그대로 보여 주므로 next/image를 unoptimized로 쓰고(SPEC-TOUR-001 plan.md §B.1·§B.6),
+// unoptimized 이미지는 이미지 최적화 경로를 거치지 않아 경로 허용 검사 대상이 아니다.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 

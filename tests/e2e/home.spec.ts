@@ -30,4 +30,17 @@ test.describe('임시 홈 페이지', () => {
 
     await expect(page.locator('h1')).toHaveCSS('font-size', HEADING_FONT_SIZE)
   })
+
+  // SPEC-TOUR-001 AC-TOUR-015
+  test('/tours로 가는 링크를 누르면 투어 목록으로 이동한다', async ({ page }) => {
+    await page.goto('/')
+    expectE2ePort(page)
+
+    const link = page.locator('a[href="/tours"]')
+    await expect(link).toHaveCount(1)
+    await link.click()
+
+    await page.waitForURL((url) => url.pathname === '/tours')
+    expectE2ePort(page)
+  })
 })

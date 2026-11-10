@@ -667,3 +667,77 @@ describe('AC-INFRA-016 README 개발 환경 안내', () => {
     }
   })
 })
+
+// SPEC-TOUR-001 AC-TOUR-014 — 디자인 토큰은 사용자 화면((frontend))에서만 정의·로드한다(plan.md §B.10, R9).
+// 검사 범위는 AC-INFRA-009와 같은 src/다(.moai/project/design/tokens.css와 SPEC 문서는 대상이 아니다).
+const TOKEN_DEFINITION = '--color-accent:'
+
+function findTokenStylesheets(): string[] {
+  return listFiles('src').filter((file) => readRepoFile(file).includes(TOKEN_DEFINITION))
+}
+
+function tokenStylesheetNames(): string[] {
+  const names = findTokenStylesheets().map((file) => path.posix.basename(file))
+  expect(names.length, `${TOKEN_DEFINITION}를 담은 파일이 있어야 한다`).toBeGreaterThanOrEqual(1)
+  return names
+}
+
+describe('AC-TOUR-014 디자인 토큰 적용 범위', () => {
+  it('--color-accent:를 담은 파일이 1개 이상 있고 모두 (frontend) 아래에 있다', () => {
+    const stylesheets = findTokenStylesheets()
+
+    expect(stylesheets.length, `${TOKEN_DEFINITION}를 담은 파일이 있어야 한다`).toBeGreaterThanOrEqual(1)
+    expect(stylesheets.filter((file) => !file.startsWith(FRONTEND_DIR))).toEqual([])
+  })
+
+  it('토큰 파일을 import·@import하는 파일이 1개 이상 있고 모두 (frontend) 아래에 있다', () => {
+    const names = tokenStylesheetNames()
+
+    // IMPORT_SPECIFIER는 CSS의 `@import "./tokens.css"`도 잡는다(`@` 뒤 `import`가 단어 경계에서 시작)
+    const importers = listFiles('src').filter((file) =>
+      importSpecifiers(readRepoFile(file)).some((specifier) => names.includes(path.posix.basename(specifier))),
+    )
+
+    expect(importers.length, '토큰 파일을 불러오는 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+    expect(importers.filter((file) => !file.startsWith(FRONTEND_DIR))).toEqual([])
+  })
+
+  it('(payload) 아래 파일은 토큰 파일명을 참조하지 않는다', () => {
+    const names = tokenStylesheetNames()
+    const payloadFiles = listFiles(PAYLOAD_DIR)
+    expect(payloadFiles.length, '(payload) 아래에 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    const offenders = payloadFiles.filter((file) => names.some((name) => readRepoFile(file).includes(name)))
+    expect(offenders).toEqual([])
+  })
+})
+
+// SPEC-TOUR-001 AC-TOUR-013 — 데이터를 읽는 두 페이지는 요청 시점에 렌더링한다(plan.md §B.3, R10).
+// 상세 경로는 generateStaticParams가 없으면 사전 렌더링 목록에 원래 나타나지 않으므로, 판정은 이 규칙이 맡는다.
+const DATA_PAGES = ['src/app/(frontend)/tours/page.tsx', 'src/app/(frontend)/tours/[slug]/page.tsx'] as const
+const CONNECTION_IMPORT = /\bimport\s*\{[^}]*\bconnection\b[^}]*\}\s*from\s*['"]next\/server['"]/
+const CONNECTION_CALL = /\bawait\s+connection\(\s*\)/
+
+describe('AC-TOUR-013 요청 시점 렌더링', () => {
+  it.each(DATA_PAGES)('%s는 next/server의 connection을 import하고 await로 호출한다', (file) => {
+    const source = readRepoFile(file)
+
+    expect(source).toMatch(CONNECTION_IMPORT)
+    expect(source).toMatch(CONNECTION_CALL)
+  })
+
+  it.each(DATA_PAGES)('%s는 generateStaticParams를 내보내지 않는다', (file) => {
+    // 설명 주석의 언급은 허용하고, export 선언(함수·변수·재내보내기)만 막는다
+    expect(readRepoFile(file)).not.toMatch(
+      /\bexport\s+(?:async\s+)?(?:function|const|let|var)\s+generateStaticParams\b|\bexport\s*\{[^}]*\bgenerateStaticParams\b/,
+    )
+  })
+
+  // R21: tours/ 구간에 loading 파일(Suspense 경계)이 있으면 notFound()가 스트리밍 중에 호출되어 200으로 응답할 수 있다
+  it('src/app/(frontend)/tours/ 아래에는 loading 파일이 없다', () => {
+    const files = listFiles(`${FRONTEND_DIR}tours`)
+    expect(files.length, 'tours/ 아래에 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    expect(files.filter((file) => /^loading\.(tsx|ts|jsx|js)$/.test(path.posix.basename(file)))).toEqual([])
+  })
+})

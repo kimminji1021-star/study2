@@ -33,3 +33,12 @@ export function formatDuration(minutes: number): string {
 export function formatSeats(remainingSeats: number, capacity: number): string {
   return `남은 자리 ${remainingSeats} / ${capacity}`
 }
+
+/** 여러 줄 설명을 문단으로 나눈다. 빈 줄(공백만 있는 줄 포함)이 문단 경계이고, 한 줄 바꿈은 문단 안에 남긴다(plan.md §B.2). */
+export function splitParagraphs(text: string): string[] {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split(/\n[ \t]*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph !== '')
+}

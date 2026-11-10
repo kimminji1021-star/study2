@@ -2,3 +2,15 @@
    (frontend)/layout.tsx에서만 불러온다. Payload 관리자 화면((payload))에서 불러오면
    Tailwind 기본 스타일(preflight)이 관리자 화면 스타일을 덮어쓴다(plan.md R11, AC-INFRA-009). */
 @import "tailwindcss";
+/* 디자인 토큰(SPEC-TOUR-001 plan.md §B.10, AC-TOUR-014). 이 파일을 거쳐서만 불러온다 */
+@import "./tokens.css";
+
+@layer base {
+  /* 제목 글자 크기는 화면마다 유틸리티로 정한다(임시 홈 h1의 text-4xl을 덮지 않게 전역 제목 규칙은 두지 않는다) */
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    word-break: keep-all;
+  }
+}

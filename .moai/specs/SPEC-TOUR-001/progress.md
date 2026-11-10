@@ -101,9 +101,51 @@ GREEN(`pnpm test`, 종료 코드 0): `Test Files 14 passed (14)`, `Tests 228 pas
 
 품질: `pnpm typecheck` 0, `pnpm lint` 0, `pnpm format:check` 0. `git diff --stat a3cc21c -- pnpm-lock.yaml package.json .prettierignore eslint.config.mjs pnpm-workspace.yaml` 출력 없음. 정리 확인(DB): `tours` `test-%` 0, `users` `%@example.test` 0, `tour_sessions` 0, `media` `test-%` 0, 전체 `users` 1, `media/` 파일 0.
 
+### M4 — 화면: 토큰, 공통 조각, 목록·상세·404, 홈 링크
+
+기준선(워크트리 `agent-acedc9994cdbf9ebe`, `ff00406`에서 `git merge --ff-only main`, HEAD `8dd69f1`): `pnpm test` 종료 코드 0, `Tests 228 passed (228)`, `src/lib/` 라인 100%(153/153). `pnpm e2e` 종료 코드 0, `4 passed`. 로그: `.moai/state/verify/a08890a8/tour-m4/baseline-{test,e2e}.log`
+
+RED(구현 전):
+- 단위·저장소 규칙(`npx vitest run --project unit --coverage.enabled=false tests/unit/status-badge.spec.ts tests/unit/format.spec.ts tests/unit/repo-rules.spec.ts`, 종료 코드 1): `Test Files 3 failed (3)`, `Tests 12 failed | 54 passed (66)`. 실패 — `Cannot find module '../../src/lib/status-badge'`, `TypeError: splitParagraphs is not a function`(4건), `--color-accent:를 담은 파일이 있어야 한다: expected 0 to be greater than or equal to 1`(3건), `ENOENT … src\app\(frontend)\tours\page.tsx`·`[slug]\page.tsx`·`scandir … tours`(5건). 로그: `red-unit.log`
+- E2E(`pnpm e2e`, 종료 코드 1): `14 failed`, `12 passed`. 실패 — 홈 `/tours` 링크 `Expected: 1 Received: 0`, 목록·상세 `Expected: 200 Received: 404`, 회차 라디오 `Expected: 3 Received: 0` 등 새 화면 14건. 통과 12건 = 기존 4건 + 익명 API 5건(M1 접근 규칙이 이미 충족 — 이 마일스톤에서 새로 생긴 동작이 아니라 E2E 증거 추가) + 404 3건(경로가 없어서 404 — 구현 뒤 경로가 생긴 상태에서 다시 통과해야 의미가 있으며 GREEN에서 통과). 로그: `red-e2e.log`
+
+GREEN·최종(같은 작업 트리, 커밋 직전):
+
+| 단계 | 명령 | 결과 | 로그 |
+|---|---|---|---|
+| 생성 파일 | `pnpm generate:types`, `pnpm generate:importmap` | 둘 다 0, 이후 `git status --short`에 두 파일 없음 | `gen-types.log`, `gen-importmap.log` |
+| 타입 | `pnpm typecheck` | 0 | `typecheck.log` |
+| 빌드 | `pnpm build` | 0. 경로 표 `○ /`, `ƒ /tours`, `ƒ /tours/[slug]` | `build.log` |
+| 사전 렌더링 목록 | Node로 같은 판정(아래 차이 참고) | `app-path /tours: true`, `app-path /tours/[slug]: true`, `prerender routes has /: true`, `prerender routes has /tours: false`, `dynamicRoutes has /tours/[slug]: false`, routes 키 `["/","/_global-error","/_not-found"]` | `prerender-manifest.log` |
+| 단위·통합 | `pnpm test` | 0. `Test Files 15 passed (15)`, `Tests 246 passed (246)`, `src/lib/` 라인 100%(161/161), 분기 92.19% | `final-test.log` |
+| E2E | `pnpm e2e` | 0. `26 passed (31.0s)` | `final-e2e.log` |
+| 린트·포맷 | `pnpm lint`, `pnpm format:check` | 0, 0(`All matched files use Prettier code style!`) | `lint.log`, `format.log` |
+| 의존성 | `git diff --stat ff00406 -- pnpm-lock.yaml package.json .prettierignore eslint.config.mjs pnpm-workspace.yaml` | 출력 없음 | — |
+
+연결 호출 변이 확인: `/tours`의 `await connection()`을 잠시 `void connection`으로 바꾸고 `pnpm build` → 경로 표 `○ /tours`, `prerender routes has /tours: true`(키에 `/tours` 추가). 되돌린 뒤 다시 빌드해 위 표의 결과를 얻었다. 로그: `mutation-no-connection{,-build}.log`
+
+| AC | 상태 | 확인 방법 | 결과 |
+|---|---|---|---|
+| AC-TOUR-006 (REST·GraphQL·파일 주소) | PASS | `tests/e2e/catalog-api.spec.ts`(로그인하지 않은 요청) | `GET /api/tours?where[slug][equals]=` 공개 1·비공개 0, `GET /api/tour-sessions?where[tour][equals]=` 공개 ≥1·비공개 0, GraphQL `Tours(where: {slug: {in: [공개, 비공개]}})` 결과 slug = 공개 하나, 파일 주소 a 200·b·c 200 아님, 익명 `POST /api/tours` 2xx 아님 + 로컬 API 조회 0건 |
+| AC-TOUR-010 | PASS | `tests/e2e/tours-list.spec.ts` | 200 + 포트 단언, O 카드에 요약·`4시간 30분`·`45,000원 · 현장 결제`·"모집 중"·+2일 일시·`남은 자리 11 / 11`, 이미지 `alt` 일치·`naturalWidth > 0`, C 카드 "모집 마감"·"남은 자리" 없음·`img` 0개·자리표시 블록, 두 배지 모두 `svg` 1개 + 글자, H 제목 0건, 카드 링크 → `/tours/<O slug>` |
+| AC-TOUR-011 | PASS | `tests/e2e/tour-detail.spec.ts` | `h1`·이미지 대체 텍스트·설명 두 문단이 서로 다른 `<p>`·소요 시간·집결 장소·가격, 회차 순서 `11 / 11` → `13 / 13` → `12 / 12`, `/ 19` 없음, 마감 라디오 `disabled` + "마감" 배지, 클릭으로 하나만 선택, `ArrowDown`이 마감 회차를 건너뛰어 +5일 회차로 이동·선택, 회차 없는 E에 "예정된 회차가 없습니다" |
+| AC-TOUR-012 | PASS | 같은 파일 | `test-<무작위>-missing` 404, H slug 404 + H 제목 0건, `Not_A_Slug` 404 |
+| AC-TOUR-013 | PASS | 빌드 매니페스트 + `tests/unit/repo-rules.spec.ts` + `tour-detail.spec.ts` | 위 표의 매니페스트 판정. 저장소 규칙: 두 페이지가 `next/server`의 `connection` import + `await connection()`, `generateStaticParams` export 없음, `tours/` 아래 loading 파일 없음(R21). E2E: 로컬 API로 제목을 `test-…-renamed`로 바꾸고 새로고침 → 상세 `h1`·목록 모두 새 제목 |
+| AC-TOUR-014 | PASS | `repo-rules.spec.ts` + E2E | `--color-accent:` 파일은 `src/app/(frontend)/tokens.css` 하나, 불러오는 파일은 `src/app/(frontend)/globals.css`(`@import "./tokens.css"`)뿐, `(payload)` 참조 0건, AC-INFRA-009 계속 통과. O 배지 배경 `rgb(226, 244, 236)`. 375×812에서 `/tours`·상세 `scrollWidth ≤ 375`, 모집 중 회차 라벨 높이·너비 ≥ 44 |
+| AC-TOUR-015 | PASS | `tests/e2e/home.spec.ts` | 기존 2건 그대로 통과(`h1` 36px 유지), 새 테스트: `a[href="/tours"]` 1개 클릭 → 경로 `/tours` + 포트 단언 |
+
+R14(미디어 주소 형태) 실측: E2E 서버(포트 3100)에서 카드 이미지 `src` = `http://localhost:3100/api/media/file/test-a9c69091-a.png` — Payload가 `serverURL`을 붙인 절대 주소. `next/image`를 `unoptimized`로 쓰므로 주소 가공·경로 허용 검사가 없어 `next.config.ts`에 `images.localPatterns`를 되살리지 않았다(주석만 현재 상태로 고침). E2E가 같은 출처·`/api/media/file/<파일명>` 경로·실제 로드를 확인한다. 로그: `r14-probe.json`
+
+차이·사건:
+- 사전 렌더링 판정은 acceptance.md의 PowerShell 명령 대신 같은 판정을 Node로 실행했다. 이 워크트리 격리 에이전트에서는 `powershell.exe` 실행이 차단되었다(같은 JSON 파일·같은 키 비교)
+- 최종 `pnpm test` 1회차 도중 공용 PostgreSQL 컨테이너(`sumbi-tour-postgres-1`)가 종료 코드 255로 멈췄다(가동 04:21:10Z → 05:21:08Z, 재시작 정책 없음, 이 작업의 명령이 아님). 통합 테스트가 `Connection terminated unexpectedly`·`ECONNREFUSED 127.0.0.1:5432`로 실패. `docker compose up -d --wait`로 다시 올려 `healthy` 확인(이름 붙은 볼륨이라 데이터 유지 — 실제 관리자 1건 그대로), 남은 테스트 데이터 0건 확인 뒤 다시 실행해 통과
+- 회차 배지 문구: 선택 불가 사유 `closed` → "마감", `full` → "자리 없음", `past` → "지난 회차"(`src/lib/status-badge.ts`). 지금은 점유 인원이 0이고 지난 회차는 상세에서 빠지므로 화면에는 "모집 중"/"마감"만 나온다
+
+정리 확인(최종 E2E 뒤, DB): `tours` `test-%` 0, `tour_sessions` 전체 0, `media` `test-%` 0, `users` `%@example.test` 0, 전체 `users` 1, `media/` 디렉터리 있음·파일 0. 포트 3100 비어 있음(3000은 이 작업 전부터 떠 있던 다른 node 프로세스 PID 632 — 건드리지 않음). 로그: `cleanup-db.log`
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<run 단계 완료 시 작성 — M1~M3 완료, M4~M6 남음>_
+_<run 단계 완료 시 작성 — M1~M4 완료, M5~M6 남음>_
 
 ## §F Phase 4 Mode Selection
 
