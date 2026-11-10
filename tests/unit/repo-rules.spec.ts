@@ -741,3 +741,40 @@ describe('AC-TOUR-013 요청 시점 렌더링', () => {
     expect(files.filter((file) => /^loading\.(tsx|ts|jsx|js)$/.test(path.posix.basename(file)))).toEqual([])
   })
 })
+
+// SPEC-TOUR-001 AC-TOUR-016 — 시드는 개발자가 `pnpm seed`로만 실행한다(plan.md §B.9 자동 실행 금지).
+// 빌드·개발 서버·테스트·설치 과정 어디에서도 불리지 않아야 하며, 설치 때 자동으로 도는 생명 주기 스크립트도 두지 않는다.
+const SEED_REFERENCE = /\bseed\b/
+
+describe('AC-TOUR-016 시드 명령과 자동 실행 금지', () => {
+  it('seed 스크립트는 cross-env로 payload run scripts/seed.ts를 실행한다', () => {
+    const seed = readScripts().seed ?? ''
+
+    expect(seed).toMatch(/^cross-env NODE_OPTIONS=--no-deprecation payload run scripts\/seed\.ts$/)
+    expect(readRepoFile('scripts/seed.ts').length).toBeGreaterThan(0)
+  })
+
+  it('seed를 뺀 어떤 스크립트도 seed를 호출하지 않는다', () => {
+    const others = Object.entries(readScripts()).filter(([name]) => name !== 'seed')
+    expect(others.length).toBeGreaterThanOrEqual(9)
+
+    // 정규식이 호출 형태를 실제로 잡아내는지 대조 확인한다
+    expect(SEED_REFERENCE.test('pnpm run seed && next dev')).toBe(true)
+    expect(SEED_REFERENCE.test('payload run scripts/seed.ts')).toBe(true)
+    expect(SEED_REFERENCE.test('node scripts/preflight.mjs dev')).toBe(false)
+
+    expect(others.filter(([, command]) => SEED_REFERENCE.test(command))).toEqual([])
+  })
+
+  it.each(['postinstall', 'prepare', 'preinstall', 'install'])('설치 생명 주기 스크립트 %s가 없다', (name) => {
+    expect(Object.keys(readScripts())).not.toContain(name)
+  })
+
+  it('README는 개발 서버 절 뒤에 pnpm seed를 안내한다', () => {
+    const readme = readReadme()
+    const devServer = readme.search(/^## .*개발 서버/m)
+    expect(devServer, '"개발 서버"가 들어간 ## 제목이 있어야 한다').toBeGreaterThanOrEqual(0)
+
+    expect(readme.indexOf('pnpm seed')).toBeGreaterThan(devServer)
+  })
+})

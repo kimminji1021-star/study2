@@ -143,6 +143,47 @@ R14(미디어 주소 형태) 실측: E2E 서버(포트 3100)에서 카드 이미
 
 정리 확인(최종 E2E 뒤, DB): `tours` `test-%` 0, `tour_sessions` 전체 0, `media` `test-%` 0, `users` `%@example.test` 0, 전체 `users` 1, `media/` 디렉터리 있음·파일 0. 포트 3100 비어 있음(3000은 이 작업 전부터 떠 있던 다른 node 프로세스 PID 632 — 건드리지 않음). 로그: `cleanup-db.log`
 
+### M5 — 개발용 시드
+
+기준선(워크트리 `agent-a099d40de734716f5`, `ff00406`에서 `git merge --ff-only main`, HEAD `9fc8751`): `pnpm test` 종료 코드 0, `Tests 246 passed (246)`, `src/lib/` 라인 100%(161/161). `pnpm e2e` 종료 코드 0, `26 passed`. DB: 전체 `users` 1, 투어·회차 0, 시드 slug 0. 로그: `.moai/state/verify/a08890a8/tour-m5/baseline-{test,e2e}.log`
+
+R17 재확인(빈 스크립트·거부 스크립트, `"type": "module"` 폴더의 임시 `.ts`를 `payload run`으로 실행): `process.exitCode = 3`만 설정 → 종료 코드 0, 최상위 `await` 뒤 `throw` → 종료 코드 1(`Error running script: …` + `Error: probe refuse`). 로그: `r17-probe-{exitcode,throw}.log`. 따라서 거부는 예외로 끝내고 진입점은 최상위 `await`로 기다린다
+
+RED(구현 전):
+- 단위·저장소 규칙(`npx vitest run --project unit --coverage.enabled=false tests/unit/seed-guard.spec.ts tests/unit/repo-rules.spec.ts`, 종료 코드 1): `Test Files 2 failed (2)`, `Tests 2 failed | 56 passed (58)`. 실패 — `Error: Cannot find module '../../src/lib/seed'`(seed-guard 파일 전체), `AssertionError: expected '' to match /^cross-env NODE_OPTIONS=--no…/seed\.ts$`(seed 스크립트 없음), `AssertionError: expected -1 to be greater than 3356`(README에 `pnpm seed` 없음). 로그: `red-unit.log`
+- 통합(`npx vitest run --project integration --coverage.enabled=false tests/integration/seed.spec.ts`, 종료 코드 1): `Test Files 1 failed (1)`, `Tests no tests`. 실패 — `Error: Cannot find module '../../src/lib/seed'`. 모듈을 불러오기 전에 실패하므로 DB에 데이터가 만들어지지 않았다. 로그: `red-integration.log`
+
+GREEN·최종:
+
+| 단계 | 명령 | 결과 | 로그 |
+|---|---|---|---|
+| 단위·저장소 규칙 | 위 RED와 같은 명령 | 0. `Tests 77 passed (77)` | `green-unit.log` |
+| 통합 | 위 RED와 같은 명령 | 0. `Tests 3 passed (3)` | `green-integration.log` |
+| 타입·린트·포맷 | `pnpm typecheck`, `pnpm lint`, `pnpm format:check` | 0, 0, 0(`All matched files use Prettier code style!`) | `typecheck.log`, `lint.log`, `format.log` |
+| 단위·통합 전체 | `pnpm test` | 0. `Test Files 17 passed (17)`, `Tests 275 passed (275)`, `src/lib/` 라인 100%, 분기 91.87%(`seed.ts` 라인 100%·분기 89.47% — `now` 기본값, 빈 목록 줄 생략 분기) | `final-test.log` |
+| E2E(시드 데이터가 있는 상태) | `pnpm e2e` | 0. `26 passed (31.9s)` — 시드 투어 3개가 목록에 함께 있어도 테스트는 자기 표식 카드만 본다(R15) | `final-e2e.log` |
+
+| AC | 상태 | 확인 방법 | 결과 |
+|---|---|---|---|
+| AC-TOUR-016 Given | PASS | 시드 slug 개수 조회(`psql … slug IN ('hallasan-yeongsil','udo-bike','haenyeo-experience')`) | 실행 전 `0`(`seed-before-counts.log`) |
+| AC-TOUR-016 실행 2회 | PASS | `pnpm seed` → `seed-1.log`, 다시 `pnpm seed` → `seed-2.log` | 둘 다 종료 코드 0. 1회 `[seed] created 3, skipped 0, sessions created 7`, 2회 `[seed] created 0, skipped 3, sessions created 0`. 시드 slug 개수 두 실행 뒤 `3`, 회차 7(`seed-after-2-counts.log`) |
+| AC-TOUR-016 데이터 모양 | PASS | 시드 투어·회차 조회(서울 시각) | 세 투어 모두 `published = t`. 회차 시작(서울) — 영실 11-13 09:00 모집 중 / 11-15 09:00 마감 / 11-20 09:00 모집 중, 우도·해녀 11-13·11-20 09:00 모집 중. 정원 15·12·10, 가격 문구 45,000·38,000·55,000원 · 현장 결제(`seed-detail.log`) |
+| AC-TOUR-016 화면 | PASS(HTML 확인) | 임시 `next dev --port 3101`을 띄워 `/tours`·상세 HTML 확인 후 직접 띄운 프로세스 트리만 종료 | `/tours` 200, 세 제목 모두 있음, "모집 중" 6회(카드 3개 × 배지), "모집 마감" 0회. 상세 3개 200, 영실 상세에 "마감" 배지 1개. 종료 뒤 3101 응답 없음(`seed-pages.log`). 사람이 브라우저로 본 확인은 아님 |
+| AC-TOUR-016 거부 1 | PASS | `NODE_ENV=production pnpm seed` | 종료 코드 1, `SeedRefusedError: Refusing to seed: NODE_ENV is "production". …`, `Pulling schema` 0줄(DB 연결 전), 개수 그대로 3(`seed-prod.log`, `seed-after-refusals-counts.log`) |
+| AC-TOUR-016 거부 2 | PASS | `DATABASE_URL='postgres://seed:probe-pass-7731@db.example.com:5432/x' pnpm seed` | 종료 코드 1, `Refusing to seed: database host "db.example.com" is not local (allowed: localhost, 127.0.0.1, ::1).`, `db.example.com` 1줄, `probe-pass-7731` 0줄, `Pulling schema` 0줄(`seed-remote.log`) |
+| AC-TOUR-016 단위 | PASS | `tests/unit/seed-guard.spec.ts` | `production` 거부(메시지에 `NODE_ENV`), `localhost`·`127.0.0.1`·`[::1]` 허용, `db.example.com`·`10.0.0.5`·`127.0.0.2`·`[::2]`·`localhost.example.com` 거부(호스트만, 비밀번호 없음), 빈 값·빈 문자열·URL 아님·호스트 없음 → 거부(값 미포함). 서울 날짜 계산(UTC 전날·월 넘김), 요약 문자열 |
+| AC-TOUR-016 통합 | PASS | `tests/integration/seed.spec.ts` | 표식 데이터 집합 2개 투어·5회차: 1회 `created` 2·공개·회차 일시 = 서울 09:00·상태 `[open, closed, open]`·종료 = 시작 + 150분. 관리자 제목 수정 뒤 2회 `skipped` 2, 투어·회차 수 그대로, 수정한 제목 유지. 회차 생성 실패(정원 0) → 예외, 그 투어가 남지 않음 |
+| AC-TOUR-016 저장소 규칙 | PASS | `tests/unit/repo-rules.spec.ts` | `seed` = `cross-env NODE_OPTIONS=--no-deprecation payload run scripts/seed.ts`, 다른 스크립트에 `seed` 0건(대조 확인 포함), `postinstall`·`prepare`·`preinstall`·`install` 없음, README에서 `pnpm seed`가 "개발 서버" 절 뒤 |
+
+차이·결정:
+- 거부 판정은 진입점 맨 앞에서 실행하고, Payload 설정은 판정 뒤에 동적 `import`로 불러온다(설정 모듈의 필수 변수 점검보다도 먼저 거부 이유가 나오게)
+- 회차 생성이 중간에 실패하면 그 투어의 회차 → 투어 순서로 되돌린다. 반쯤 만든 투어가 남으면 다음 실행이 slug만 보고 건너뛰어 회차가 빠진 채로 굳기 때문이다(통합 테스트로 확인)
+- 시드 투어의 설명·집결 장소·소요 시간(270·180·120분)은 핸드오프에 없는 값이라 가상 문구로 채웠다(가격·이름만 핸드오프 기준)
+- README는 "6. 개발 서버 실행" 절 끝에 `### 샘플 투어 넣기(선택)` 한 단락만 더했다. `## ` 절을 새로 만들면 뒤 절 번호가 바뀌므로 피했고, 단락에 `pnpm test`·`pnpm e2e`·관리자 주소 문자열은 쓰지 않았다(D10, AC-INFRA-016 순서 검사 계속 통과)
+- 거부 확인은 acceptance.md의 PowerShell `$env:` 대신 Bash 환경 변수 접두로 실행했다(이 워크트리 격리 에이전트에서 `powershell.exe` 실행 차단, 같은 `pnpm seed` 명령·같은 값)
+
+시드 데이터는 개발 DB에 남겨 두었다(사용자 개발 데이터). 정리 확인(최종 E2E 뒤): 전체 `users` 1, `users` `%@example.test` 0, `tours` `test-%` 0, 표식 회차 0, `media` `test-%` 0, 시드 투어 3·회차 7. 로그: `cleanup-db.log`
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<run 단계 완료 시 작성 — M1~M4 완료, M5~M6 남음>_
