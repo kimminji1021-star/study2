@@ -61,9 +61,30 @@ GREEN(`pnpm test`, 종료 코드 0): `Test Files 9 passed (9)`, `Tests 176 passe
 - RED 실행 중 `catalog-access.spec.ts` 정리 단계가 컬렉션 부재로 중간에 멈춰 테스트 관리자(`access-…@example.test`) 1건이 남았다. 해당 1건만 지웠고(실제 관리자 영향 없음), 정리 단계를 단계별 독립 실행(실패해도 계정 삭제는 계속, 끝에 첫 오류를 다시 던짐)으로 고쳤다
 - 개발 DB에 `media`, `tours`, `tour_sessions`(+ `startsat_tz`·`endsat_tz` 열) 테이블이 개발 모드 자동 반영으로 생겼다
 
+### M2 — 남은 자리·표시 도우미
+
+기준선(워크트리 `agent-a6e70eca600ee5f2b`, `ff00406`에서 `git merge --ff-only a3cc21c`, HEAD `a3cc21c`): `pnpm test` 종료 코드 0, `Tests 176 passed (176)`, `src/lib/` 라인 100%(92/92). 로그: `.moai/state/verify/a08890a8/tour-m2/baseline-test.log`
+
+RED(구현 전, `npx vitest run --project unit --coverage.enabled=false <새 단위 테스트 4개>`, 종료 코드 1): `Test Files 4 failed (4)`, `Tests 4 skipped (4)`. 실패 — `Error: Cannot find module '../../src/lib/session-availability'`, `'../../src/lib/catalog-order'`, `'../../src/lib/format'`(정적·동적 import 모두). 로그: `.moai/state/verify/a08890a8/tour-m2/red-test.log`
+
+GREEN(`pnpm test`, 종료 코드 0): `Test Files 13 passed (13)`, `Tests 215 passed (215)`. 커버리지 `src/lib/` 라인 100%(125/125), 분기 94.54%. 로그: `.moai/state/verify/a08890a8/tour-m2/final-test.log`
+
+시간대 테스트 변이 확인: `src/lib/format.ts`에서 `timeZone`을 잠시 빼고 `format-timezone.spec.ts`만 실행 → 종료 코드 1, `Tests 3 failed | 1 passed (4)`(예: `Received: "11월 19일 (목) 오후 7:00"`). 되돌린 뒤 통과. 로그: `.moai/state/verify/a08890a8/tour-m2/mutation-no-timezone.log`
+
+| AC | 상태 | 확인 방법 | 결과 |
+|---|---|---|---|
+| AC-TOUR-008 남은 자리 | PASS | `tests/unit/session-availability.spec.ts` | 15·0 → 15, 15·15 → 0(자리 없음), 15·20 → 0, 점유 생략 → 0으로 계산 |
+| AC-TOUR-008 선택 가능 | PASS | 같은 파일 | 가능 / 마감(`closed`) / 시작 = 현재(`past`) / 지남(`past`) / 자리 없음(`full`), 해석 불가 시각 → `past`, 사유 우선순위 마감 → 지남 → 자리 없음 |
+| AC-TOUR-008 가장 가까운 회차·정렬·상세 목록 | PASS | `tests/unit/catalog-order.spec.ts` | 선택 불가 건너뜀·없으면 `null`, 모집 중 먼저(시작 시각 → 제목), 나머지 제목 순(`localeCompare(…, 'ko')`), 상세는 시작 ≤ 현재 제외·시작 순·마감 포함 |
+| AC-TOUR-008 일시 표기 | PASS | `tests/unit/format-timezone.spec.ts`(별도 파일, `TZ=America/New_York` 적용 단언 `getHours() === 19` 후 실행, 모듈은 시간대 변경 뒤 동적 import, 복원은 `delete process.env.TZ`/원래 값) | `11월 20일 (금) 오전 9:00`, `11월 20일 (금) 오후 3:30`, 날짜 경계 `11월 21일 (토) 오전 12:05` |
+| AC-TOUR-008 소요 시간 | PASS | `tests/unit/format.spec.ts` | 30 → `30분`, 59 → `59분`, 60 → `1시간`, 90 → `1시간 30분`, 240 → `4시간`, 270 → `4시간 30분`, 0 → `0분`, 음수·소수·NaN → `RangeError` |
+| AC-TOUR-008 slug 판정 | PASS | `tests/unit/catalog-validation.spec.ts`(M1) | `hallasan-yeongsil`·`udo-bike-2`·`a` 허용, 잘못된 값 거부 |
+
+품질: `pnpm typecheck` 0, `pnpm lint` 0, `pnpm format:check` 0(`All matched files use Prettier code style!`). 정리 확인(DB): `tours` `test-%` 0, `users` `%@example.test` 0, `tour_sessions` 0, `media` `test-%` 0, 전체 `users` 1(실제 관리자), `media/` 파일 0.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<run 단계 완료 시 작성 — M1 완료, M2~M6 남음>_
+_<run 단계 완료 시 작성 — M1~M2 완료, M3~M6 남음>_
 
 ## §F Phase 4 Mode Selection
 
