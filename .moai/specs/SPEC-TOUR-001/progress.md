@@ -286,7 +286,7 @@ residual_risks:
 ```yaml
 sync_status: complete
 sync_complete_at: 2026-11-10
-sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+sync_commit_sha: fe2bfea
 frontmatter_status_transitions:
   spec_md: "in-progress → completed (3-phase close, sync 커밋에 합침)"
   spec_compact_md: "status 줄 completed로 맞춤"
