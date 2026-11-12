@@ -6,6 +6,16 @@
 
 ### 추가됨
 
+- **SPEC-APPLY-001 신청 흐름과 정원** (수용 기준 16개 중 자동화 부분 전부 충족 — AC-APPLY-003 관리자 화면 수동 확인은 사람 확인 대기, sync 감사 PASS 93.5)
+  - 컬렉션 2종과 접근 규칙: 신청 `src/collections/Applications.ts`, 신청 시도 기록 `src/collections/ApplicationAttempts.ts`. 신청은 서버 액션 경로로만 만들 수 있고 관리자는 읽기만 가능하며, REST·GraphQL 쓰기 요청은 403으로 거부. 신청 시도 기록은 모든 접근을 거부하고 관리자 메뉴에서 숨김
+  - 신청이 있는 회차는 삭제를 거부 (`src/collections/TourSessions.ts`)
+  - 정원 확인: 회차 행을 잠근 뒤(`FOR UPDATE`) 점유 인원을 다시 계산해 판정하므로 동시에 제출해도 정원을 넘지 않으며, 정원이 차면 회차를 자동 마감 (`src/lib/submit-application.ts`, `src/lib/transaction-db.ts`)
+  - 점유 인원은 저장하지 않고 한 곳에서 계산(`src/lib/occupancy.ts`)해 투어 목록 `/tours`와 상세 화면의 남은 자리에 반영
+  - 스팸 방지: 같은 IP에서 10분에 10회까지 제출 허용(IP는 HMAC 키로 변환해 저장)과 허니팟 입력란 (`src/lib/rate-limit.ts`)
+  - 신청 화면 `/apply` (`src/app/(frontend)/apply/page.tsx`, `ApplyForm.tsx`, `actions.ts`)와 접수 완료 화면 `/apply/complete/SB-XXXXX-XXXXX` (`src/app/(frontend)/apply/complete/[ref]/page.tsx`): 접수 번호는 추측할 수 없게 만들고 DB ID와 개인정보는 표시하지 않음 (`src/lib/reference-code.ts`, `src/lib/application-summary.ts`)
+  - 동의 기록과 동의 문구 버전 저장 (`src/lib/consent.ts`). 동의 고지·보유 기간 문구는 초안이며 출시 전 전문가 검토가 필요함
+  - 테스트: Vitest 517건(`src/lib` 라인 커버리지 98.98%), Playwright E2E 40건
+
 - **SPEC-TOUR-001 투어 카탈로그와 회차** (수용 기준 16개 충족, sync 감사 PASS 92.5)
   - 컬렉션 3종과 접근 규칙: 투어 `src/collections/Tours.ts`, 회차 `src/collections/TourSessions.ts`, 이미지 `src/collections/Media.ts`. 쓰기는 관리자만, 익명 읽기는 공개 투어와 그 회차·대표 이미지로 제한 (`src/lib/access.ts`)
   - 업로드 규칙: JPEG·PNG·WebP만 허용, 5MB 초과 거부, 대체 텍스트 필수. 업로드 파일은 저장소 루트 `media/`에 저장하며 git에서 제외

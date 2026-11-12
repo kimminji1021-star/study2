@@ -1,7 +1,7 @@
 # SPEC-APPLY-001 (compact) — 신청 흐름과 정원
 
 > run 단계용 요약본. 원본: `spec.md`(요구사항·용어·가정), `acceptance.md`(오류 코드·수용 기준), `plan.md`(결정·마일스톤·위험), `interview.md`(사용자 결정). 내용이 다르면 원본이 우선한다.
-> Tier M · status: draft · 문서 버전 0.1.2(plan-audit 1회차 D1~D7·O1~O12, 2회차 MF-1·MF-2·N1·N3·N5 반영) · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 · 의존: SPEC-TOUR-001(completed) · 기준 HEAD `0cdea2f`
+> Tier M · status: completed · 문서 버전 0.1.2(plan-audit 1회차 D1~D7·O1~O12, 2회차 MF-1·MF-2·N1·N3·N5 반영) · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 · 의존: SPEC-TOUR-001(completed) · 기준 HEAD `0cdea2f`
 
 ## 사용자 결정 (구속)
 

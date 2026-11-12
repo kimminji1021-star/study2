@@ -423,7 +423,7 @@ AssertionError: expected '{\n  code: \'INTERNAL_ERROR\',\n  err…' not to conta
 
 ```yaml
 run_complete_at: 2026-11-12
-run_commit_sha: <M6 커밋 — 이 문서를 담은 커밋 자체라 sync 단계에서 백필>
+run_commit_sha: 88df154   # M6 커밋(sync 단계에서 기록)
 run_status: complete-with-pending-manual-check
 ac_pass_count: 16          # AC-APPLY-003은 자동화 부분(로컬 API·REST·GraphQL) PASS, 관리자 화면 수동 확인만 PENDING
 ac_fail_count: 0
@@ -445,4 +445,35 @@ legal_review_required: true
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase>_
+```yaml
+sync_status: complete
+sync_complete_at: 2026-11-12
+sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+frontmatter_status_transitions:
+  spec_md: "in-progress → implemented → completed (3-phase close, sync 커밋에 합침), updated 2026-11-12"
+  spec_compact_md: "status 줄 completed로 맞춤"
+sync_audit:
+  verdict: PASS
+  score: 93.5
+  dimensions: {functionality: 95, security: 90, craft: 95, consistency: 93}
+  blocking_findings: 0
+  report: .moai/reports/sync-audit/SPEC-APPLY-001-sync-audit.md   # 추적하지 않는 파일
+sync_evidence_head: 88df154
+b12_self_test:
+  a_pre_emission_grep: "grep -c 'SPEC-APPLY-001' CHANGELOG.md → 0"
+  b_ac_count: "acceptance.md 고유 AC-ID 17개 = AC-APPLY 16개 + 회귀 참조 AC-TOUR-009. CHANGELOG 항목은 16개로 기록"
+  c_path_check: "CHANGELOG가 인용한 경로 14개 ls 확인, 누락 0"
+changelog_entry_position: "[Unreleased] > 추가됨 첫 항목(SPEC-TOUR-001 위)"
+carry_over:
+  manual_check:
+    - "AC-APPLY-003 관리자 화면 수동 확인 — 사람이 pnpm dev 후 확인해야 함(미실시)"
+  legal:
+    - "동의 고지·보유 기간 문구 — 초안, 출시 전 전문가 검토 필요(legal_review_required: true)"
+deferred_optional_findings:   # 기록만, 코드 변경 없음
+  F1: "TourSessions.ts:47-55 — 회차 삭제 거부 검사와 첫 신청 커밋 사이 경합. FK가 ON DELETE SET NULL이라 그 사이 삭제되면 신청의 회차가 비게 됨"
+  F2: "submit-application.ts:170,190 — 잠금 구간 안의 create/update에 depth: 0 지정 권장"
+  F3: "rate-limit.ts:53 — 오래된 시도 기록 정리를 요청마다 수행(@MX:DEBT), 예약 정리로 옮길 항목"
+  F4: "HMAC 비밀값을 별도 환경 변수로 분리 — 배포 SPEC"
+  F5: "Vercel 밖에서 x-forwarded-for 신뢰 문제 — 배포 SPEC"
+  F6: "정보성 항목(조치 불필요)"
+```
