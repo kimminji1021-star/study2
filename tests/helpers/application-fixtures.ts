@@ -1,15 +1,15 @@
 // SPEC-APPLY-001 테스트 데이터 도우미 — 테스트 데이터 표식을 붙인 신청 입력값과 이메일 표본을 만든다.
 // 신청은 이름에 표식을 넣고 이메일은 `<표식>@example.test`로 쓴다(acceptance.md 머리말).
 // 정리 순서: 신청 시도 기록 → 신청 → 회차 → 투어 → 미디어(plan.md §B.9).
-import { randomBytes } from 'node:crypto'
+import type { Payload } from 'payload'
 
-// Crockford Base32(I·L·O·U 제외). 접수 번호 생성 모듈(M2) 이전에 테스트가 고유한 값을 만들 때만 쓴다
-const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+import type { ApplicationFormInput } from '../../src/lib/application-input'
+import { generateReferenceCode } from '../../src/lib/reference-code'
+import { daysFromNow, tourInput } from './catalog-fixtures'
 
-/** `SB-XXXXX-XXXXX` 형식의 무작위 접수 번호(테스트 전용). */
+/** `SB-XXXXX-XXXXX` 형식의 무작위 접수 번호. 로컬 API로 신청을 직접 만드는 테스트가 고유한 값을 쓸 때 부른다. */
 export function testReferenceCode(): string {
-  const chars = [...randomBytes(10)].map((byte) => CROCKFORD[byte & 31]).join('')
-  return `SB-${chars.slice(0, 5)}-${chars.slice(5)}`
+  return generateReferenceCode()
 }
 
 /**
@@ -40,4 +40,96 @@ export function applicationInput(
     privacyPolicyVersion: 'test-version',
     ...overrides,
   }
+}
+
+/** 서버 제출 경로(신청 처리 함수)에 넣는 올바른 양식 입력값. 이름에 표식, 이메일은 `<표식>@example.test`. */
+export function submissionInput(
+  sessionId: number,
+  marker: string,
+  overrides: Partial<ApplicationFormInput> = {},
+): ApplicationFormInput {
+  return {
+    session: String(sessionId),
+    name: `${marker} 신청자`,
+    email: `${marker}@example.test`,
+    phone: '010-1234-5678',
+    partySize: '1',
+    requests: '',
+    privacyConsent: true,
+    requestsConsent: false,
+    ...overrides,
+  }
+}
+
+export type SessionFixtureOptions = {
+  capacity: number
+  /** 시작 시각(실행 시각 기준 일수). 기본 +2일 — 하루 이상 떨어진 값만 쓴다(acceptance.md 머리말) */
+  startsInDays?: number
+  status?: 'open' | 'closed'
+  published?: boolean
+}
+
+/** 표식을 붙인 투어 1개와 그 회차 1개를 만든다. slug는 `<표식>-<suffix>`라 정리 조건(slug like 표식)에 걸린다. */
+export async function createTourWithSession(
+  payload: Payload,
+  marker: string,
+  suffix: string,
+  { capacity, startsInDays = 2, status = 'open', published = true }: SessionFixtureOptions,
+): Promise<{ tourId: number; sessionId: number }> {
+  const tour = await payload.create({
+    collection: 'tours',
+    data: tourInput(`${marker}-${suffix}`, { published }) as never,
+  })
+  const session = await payload.create({
+    collection: 'tour-sessions',
+    data: {
+      tour: tour.id,
+      startsAt: daysFromNow(startsInDays),
+      endsAt: daysFromNow(startsInDays, 4),
+      capacity,
+      status,
+    } as never,
+  })
+  return { tourId: tour.id, sessionId: session.id }
+}
+
+/** 표식이 붙은 투어의 신청 → 회차 → 투어를 지운다(신청 삭제는 접근 규칙이 막으므로 로컬 API 기본값). */
+export async function cleanupMarkerData(payload: Payload, marker: string): Promise<void> {
+  const tours = await payload.find({
+    collection: 'tours',
+    where: { slug: { like: marker } },
+    pagination: false,
+    depth: 0,
+  })
+  const tourIds = tours.docs.map((tour) => tour.id)
+  const sessions =
+    tourIds.length > 0
+      ? await payload.find({
+          collection: 'tour-sessions',
+          where: { tour: { in: tourIds } },
+          pagination: false,
+          depth: 0,
+        })
+      : { docs: [] }
+  const sessionIds = sessions.docs.map((session) => session.id)
+  await payload.delete({
+    collection: 'applications',
+    where: {
+      or: [{ email: { like: marker } }, ...(sessionIds.length > 0 ? [{ session: { in: sessionIds } }] : [])],
+    },
+  })
+  if (tourIds.length > 0) {
+    await payload.delete({ collection: 'tour-sessions', where: { tour: { in: tourIds } } })
+    await payload.delete({ collection: 'tours', where: { id: { in: tourIds } } })
+  }
+}
+
+/** 회차의 상태와 신청 수(트랜잭션 밖, 커밋된 값). */
+export async function sessionSnapshot(
+  payload: Payload,
+  sessionId: number,
+): Promise<{ status: string; applications: number }> {
+  const session = await payload.findByID({ collection: 'tour-sessions', id: sessionId, depth: 0 })
+  const count = await payload.count({ collection: 'applications', where: { session: { equals: sessionId } } })
+  return { status: session.status, applications: count.totalDocs }
 }

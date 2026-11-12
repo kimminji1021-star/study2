@@ -81,6 +81,75 @@ AssertionError: expected [ 'media', 'tour-sessions', …(2) ] to deeply equal [ 
 - 접수 번호 형식 검증은 컬렉션에 두지 않았다(M1 범위 밖 — M2 접수 번호 모듈과 함께 판단). 테스트는 `tests/helpers/application-fixtures.ts`의 `testReferenceCode()`로 고유 값을 만든다.
 - 이 worktree의 테스트가 공유 개발 DB에 새 테이블(`applications`, `application_attempts`)과 `payload_locked_documents_rels`의 열을 개발 모드 스키마 반영으로 추가했다. 이 변경이 없는 checkout(main 등)에서 `pnpm dev`·테스트를 돌리면 Payload가 그 테이블·열을 지우려 할 수 있다(plan.md R15 계열). M1 커밋이 main에 합쳐지기 전까지는 주의가 필요하다.
 
+### M2 — 점유 인원과 정원 확인 구간
+
+기준 HEAD `c1cb912`(main, M1 병합). 실행 위치는 격리 worktree(`.claude/worktrees/agent-a24be99d665f7eb4f`), PostgreSQL 컨테이너는 본 checkout과 공유. 긴 출력은 `.moai/state/verify/apply001-m2/`(git 제외). 시작 시 `git merge --ff-only c1cb912` 후 `git log --oneline -1` = `c1cb912 feat(SPEC-APPLY-001): M1 신청 데이터 모델과 접근 규칙`, `pnpm install --frozen-lockfile` 종료 코드 0.
+
+**RED** (구현 전, `pnpm exec vitest run --coverage.enabled=false <새·변경 테스트 7개>`, 종료 코드 1, `red.log`):
+
+```text
+ FAIL  |unit| tests/unit/application-input.spec.ts [ tests/unit/application-input.spec.ts ]
+Error: Cannot find module '../../src/lib/reference-code' imported from …/tests/helpers/application-fixtures.ts
+ FAIL  |unit| tests/unit/consent.spec.ts [ tests/unit/consent.spec.ts ]
+Error: Cannot find module '../../src/lib/consent' imported from …/tests/unit/consent.spec.ts
+ FAIL  |unit| tests/unit/reference-code.spec.ts [ tests/unit/reference-code.spec.ts ]
+Error: Cannot find module '../../src/lib/reference-code' imported from …/tests/unit/reference-code.spec.ts
+ FAIL  |unit| tests/unit/submit-application.spec.ts [ tests/unit/submit-application.spec.ts ]
+Error: Cannot find module '../../src/lib/submit-application' imported from …/tests/unit/submit-application.spec.ts
+ FAIL  |integration| tests/integration/application-concurrency.spec.ts [ … ]
+Error: Cannot find module '../../src/lib/occupancy' imported from …/tests/integration/application-concurrency.spec.ts
+ FAIL  |integration| tests/integration/submit-application.spec.ts [ … ]
+Error: Cannot find module '../../src/lib/consent' imported from …/tests/integration/submit-application.spec.ts
+ FAIL  |unit| tests/unit/repo-rules.spec.ts > AC-APPLY-011 접수 번호 모듈의 난수 출처 > 접수 번호 모듈은 node:crypto를 import하고 Math.random을 담지 않는다
+Error: ENOENT: no such file or directory, open '…\src\lib\reference-code.ts'
+ Test Files  7 failed (7)
+      Tests  1 failed | 58 passed (59)
+```
+
+**GREEN** (같은 파일 + `application-collections.spec.ts`, 종료 코드 0, `green.log`): `Test Files 8 passed (8)` / `Tests 238 passed (238)`. 첫 GREEN 시도에서 저장소 규칙 1건이 실패했다 — 접수 번호 모듈의 주석이 `Math.random`이라는 글자를 담고 있었다. 주석 표현을 바꿔 통과.
+
+**변이 확인** (AC-APPLY-010, plan.md §E-1 7번): `src/lib/submit-application.ts`의 잠금 문장에서 `FOR UPDATE`만 지운 코드로 `pnpm exec vitest run --coverage.enabled=false --reporter=verbose tests/integration/application-concurrency.spec.ts`를 3회 실행 — 3회 모두 종료 코드 1, `Tests 7 failed | 1 passed (8)` (`mutation-run1~3.log`). 실패 단언(3회 동일):
+
+```text
+AssertionError: expected [ 'SUCCESS', 'SUCCESS', …(7) ] to have a length of 5 but got 9      ← 시나리오 A 3반복 모두
+AssertionError: expected 23 to be less than or equal to 10                                   ← 시나리오 B 3반복 모두(정원 초과 저장)
+AssertionError: expected 0 to be greater than or equal to 1                                  ← 잠금 대기 세션 0개
+```
+
+통과한 1건은 300ms 잠금 대기 제한 사례다. 잠금 문장이 없어도 신청 INSERT의 외래 키 검사(`FOR KEY SHARE`)가 테스트 쪽 `FOR UPDATE` 잠금과 충돌해 `55P03`이 나기 때문이며, 이 사례는 변이 대상이 아니다. `FOR UPDATE`를 되돌린 뒤 같은 명령: 종료 코드 0, `Tests 8 passed (8)` (`mutation-restored.log`). 3회 안에 실패했으므로 커밋 직전 지연 주입(차단자 보고 조건)은 필요 없었다.
+
+**M2 종료 시 전체 검증** (작업 트리 = M2 변경 전부, 커밋 직전):
+
+| 명령 | 종료 코드 | 결과 | M1 대비 |
+|---|---|---|---|
+| `pnpm typecheck` | 0 | 출력 없음 | 같음 |
+| `pnpm generate:types` | 0 | `src/payload-types.ts` 변경 없음(`git status --short` 비어 있음) | — |
+| `pnpm test` | 0 | `Test Files 25 passed (25)` / `Tests 463 passed (463)` / `Lines : 98.83% ( 338/342 )` | +5 파일, +98건, 실패 0 |
+| `pnpm lint` | 0 | 출력 없음 | 같음 |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | 같음 |
+
+테스트 데이터 잔여 확인(전체 실행 뒤, `payload run`으로 개수만 조회): `{"testTours":0,"applications":0,"attempts":0,"testUsers":0}`.
+
+| AC | 상태 | 검증 | 실제 결과 |
+|---|---|---|---|
+| AC-APPLY-005 (정의 부분) | PASS | `tests/integration/submit-application.spec.ts` — 대기 2·확정 1·취소 2 → 화면용 함수 3, 신청 없는 회차 0, 같은 트랜잭션 연결용 함수도 3/0 | `pnpm test` 463/463. 조회 계층 반영·질의 수는 M3 |
+| AC-APPLY-008 (검증 함수 + 통합) | PASS | `tests/unit/application-input.spec.ts` 묶음 검증 표 전체(이름 50/51자 짝, 연락처 8개 표본, 30/31자 짝, 인원, 요청 사항·선택 동의, 필수 동의, 회차 범위, 여러 오류 동시) + 통합 5건 `VALIDATION_FAILED`·신청 수·점유 인원 불변 | 통과. 화면 부분은 M5 |
+| AC-APPLY-009 | PASS | 정원 4: 3 성공(open·점유 3) → 2 `CAPACITY_EXCEEDED` → 1 성공(closed·점유 4) → 1 `SESSION_CLOSED`, 저장값 pending·접수 번호 형식·회차, `SESSION_STARTED`·비공개 투어 `SESSION_NOT_FOUND`·없는 ID `SESSION_NOT_FOUND`, 롤백(주입 함수가 같은 req로 읽은 상태 `closed` → `INTERNAL_ERROR` → 신청 0·`open`), 대조군 성공·closed | 통과 |
+| AC-APPLY-010 | PASS | `tests/integration/application-concurrency.spec.ts` — 시나리오 A(12건) 3회, 시나리오 B(8건) 3회, `pg_stat_activity` 잠금 대기 세션 ≥ 1, 300ms 제한 `SESSION_BUSY` 2초 안, 취소해도 closed 유지·이어서 `SESSION_CLOSED`. 기본값: 단위 `DEFAULT_LOCK_TIMEOUT_MS === 5000`, 통합 주입 함수로 읽은 `current_setting('lock_timeout')` = `5s` | 통과(verbose: 시나리오 A 395/127/105ms, B 71/103/88ms, 잠금 증거 82ms, 300ms 제한 328ms) + 변이 확인 위 기록 |
+| AC-APPLY-011 (단위) | PASS | `tests/unit/reference-code.spec.ts` 1만 개 형식·중복 없음·32자 모두 등장·I/L/O/U 없음 + 저장소 규칙(`node:crypto` import, `Math.random` 없음) | 통과 |
+| AC-APPLY-014 | PASS | 통합: 주입한 `now`와 `privacyConsentAt` 일치, 버전 = 현재 상수, 요청 사항·선택 동의 일시·취소일 비어 있음 / 요청 사항 + 선택 동의 → 저장·일시 일치 / 선택 동의만 → 일시 없음. 단위: 고정 문구, 버전 형식, `consentDocument()` SHA-256 앞 8자리 = `8deb2c9f` | 통과 |
+
+결정 메모:
+
+- 신청 처리 함수는 `src/lib/submit-application.ts`의 `submitApplication(payload, input, { now, lockTimeoutMs, beforeCommit })`. 결과는 `{ status: 'success', referenceCode }` 또는 `{ status: 'error', code[, fieldErrors] }`. 횟수 제한·허니팟(M4)은 아직 없다 — M4가 앞단에 붙이고 동시성 테스트의 `submit()` 한 곳에서 제출마다 다른 접속 IP를 넘기면 된다.
+- 잠금 뒤 다시 읽기는 회차·투어 공개 여부 1문장 + 점유 인원 1문장(`occupancy.ts`의 같은 정의). 판정은 `getSessionAvailability`를 재사용한다(사유 우선순위 closed → past → full, 그 뒤 인원 > 남은 자리).
+- 원시 SQL 연결은 `src/lib/transaction-db.ts` 한 곳에서 꺼낸다(drizzle-orm 직접 import 없음). 커밋 직전에 트랜잭션이 살아 있는지 확인한다 — 안쪽 작업이 이미 롤백했다면 `commitTransaction`이 조용히 끝나 거짓 성공이 될 수 있어서다.
+- 로그는 `payload.logger.error({ code, errorName, sessionId, msg })`만 남긴다. 잡은 오류 객체·메시지를 넘기지 않는다(REQ-APPLY-015, 전체 검증은 M6 AC-APPLY-015).
+- 컬렉션 `referenceCode` 필드에 형식 검사(`isValidReferenceCode`)를 붙였다(M1이 남긴 항목). `application-collections.spec.ts`에 형식이 틀린 3개 표본 거부 사례를 더했다. 테스트 도우미 `testReferenceCode()`는 이제 접수 번호 모듈을 쓴다.
+- 동의 문구 버전은 `2026-11-10.8deb2c9f`. 법률 문구는 초안이며 **출시 전 전문가 확인 필요**(코드 주석 `@MX:NOTE`에도 표시).
+- 커버리지: `submit-application.ts`의 미실행 줄 123-124·128-129는 `beginTransaction` 실패·`null` 반환(트랜잭션 꺼짐) 분기다. 실제 DB로 재현할 수 없어 plan.md R4대로 코드 검토 항목으로 둔다.
+- `pnpm test` 출력의 pg `DeprecationWarning: Calling client.query() when the client is already executing a query`는 기존 파일(`tests/integration/tour-collections.spec.ts` 단독 실행에서도 1건)에서도 나오는 Payload 내부 동작이다 — M2가 만든 경고가 아니다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

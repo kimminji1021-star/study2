@@ -166,6 +166,17 @@ describe('Applications 컬렉션 검증(실제 DB)', () => {
       expect(result.totalDocs).toBe(1)
     })
 
+    it.each(['SB-ABCDI-00000', 'sb-abcde-fghjk', '12345'])(
+      '형식이 틀린 접수 번호 %s는 검증 오류다(M2 접수 번호 모듈의 형식 검사)',
+      async (referenceCode) => {
+        const before = await countApplications(sessionId)
+        await expect(createApplication(applicationInput(sessionId, marker, { referenceCode }))).rejects.toBeInstanceOf(
+          ValidationError,
+        )
+        expect(await countApplications(sessionId)).toBe(before)
+      },
+    )
+
     it('이름이 공백뿐이거나 제어 문자를 담거나, 연락처 형식이 틀리면 검증 오류다', async () => {
       const before = await countApplications(sessionId)
       for (const overrides of [{ name: '   ' }, { name: `${marker}\u0000` }, { phone: '1234567' }]) {

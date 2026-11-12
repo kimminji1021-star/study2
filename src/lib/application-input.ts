@@ -1,5 +1,5 @@
 // 신청 입력 규칙 순수 함수 — SPEC-APPLY-001 REQ-APPLY-001·008, plan.md §B.6.
-// 서버 제출 경로의 입력 검증(M2)과 applications 컬렉션 필드 검증이 같은 함수를 써서
+// 서버 제출 경로의 입력 검증(validateApplicationInput)과 applications 컬렉션 필드 검증이 같은 함수를 써서
 // "서버 검증은 통과했는데 컬렉션이 거부해 일반 오류가 보이는" 불일치를 막는다(plan.md R13).
 // 각 함수는 통과하면 null, 아니면 입력란 오류 코드(acceptance.md §0, 영문 고정)를 돌려준다.
 
@@ -10,7 +10,11 @@ export const PARTY_SIZE_MIN = 1
 export const PARTY_SIZE_MAX = 10
 export const REQUESTS_MAX_LENGTH = 500
 
+// tour_sessions.id는 PostgreSQL integer — 범위를 넘으면 조회가 22003으로 실패해 404 대신 500이 된다(plan.md R22)
+export const SESSION_ID_MAX = 2147483647
+
 export type FieldErrorCode =
+  | 'SESSION_INVALID'
   | 'NAME_REQUIRED'
   | 'NAME_TOO_LONG'
   | 'NAME_INVALID'
@@ -18,6 +22,8 @@ export type FieldErrorCode =
   | 'PHONE_INVALID'
   | 'PARTY_SIZE_INVALID'
   | 'REQUESTS_TOO_LONG'
+  | 'REQUESTS_CONSENT_REQUIRED'
+  | 'PRIVACY_CONSENT_REQUIRED'
 
 // @MX:NOTE: [AUTO] Payload 3.93.0 email 필드 검증 정규식의 복사본(node_modules/payload/dist/fields/validations.js 89~112행).
 // Payload가 정규식을 내보내지 않아 복사했다. 어긋나면 이메일 표본 일관성 테스트(AC-APPLY-002 단위·통합)가 실패한다
@@ -69,4 +75,86 @@ export function checkRequests(value: unknown): FieldErrorCode | null {
   if (value === undefined || value === null) return null
   if (typeof value !== 'string') return 'REQUESTS_TOO_LONG'
   return charLength(value) > REQUESTS_MAX_LENGTH ? 'REQUESTS_TOO_LONG' : null
+}
+
+// 0으로 시작하지 않는 10자리 이하 십진 정수 문자열(앞뒤 공백·부호·소수점 없음)
+const SESSION_ID_TEXT = /^[1-9][0-9]{0,9}$/
+const PARTY_SIZE_TEXT = /^(?:[1-9]|10)$/
+
+/** 회차 식별 값: 1 이상 2147483647 이하의 정수 문자열이면 숫자, 아니면 null. 신청 화면(M5)도 같은 함수로 404를 판정한다. */
+export function parseSessionId(value: unknown): number | null {
+  if (typeof value !== 'string' || !SESSION_ID_TEXT.test(value)) return null
+  const id = Number(value)
+  return id <= SESSION_ID_MAX ? id : null
+}
+
+/** 서버 제출 경로가 받는 양식 값(FormData 해석 결과). 체크 상자는 체크되었을 때만 true. */
+export type ApplicationFormInput = {
+  session?: unknown
+  name?: unknown
+  email?: unknown
+  phone?: unknown
+  partySize?: unknown
+  requests?: unknown
+  privacyConsent?: unknown
+  requestsConsent?: unknown
+}
+
+export type ApplicationField = 'session' | 'name' | 'email' | 'phone' | 'partySize' | 'requests' | 'privacyConsent'
+export type FieldErrors = Partial<Record<ApplicationField, FieldErrorCode>>
+
+/** 검증을 통과한 값. 문자열은 앞뒤 공백을 뺐고, 요청 사항은 비어 있을 수 있다. */
+export type ApplicationValues = {
+  sessionId: number
+  name: string
+  email: string
+  phone: string
+  partySize: number
+  requests: string
+  requestsConsent: boolean
+}
+
+export type ApplicationValidation = { ok: true; value: ApplicationValues } | { ok: false; fieldErrors: FieldErrors }
+
+function trimmed(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
+ * 서버 제출 경로의 입력 재검증(REQ-APPLY-008). 브라우저 쪽 검사와 관계없이 모든 입력란을 보고,
+ * 틀린 입력란마다 코드 하나를 돌려준다. 요청 사항이 있는데 선택 동의가 없으면 요청 사항만 버리지 않고 거부한다.
+ */
+export function validateApplicationInput(input: ApplicationFormInput): ApplicationValidation {
+  const fieldErrors: FieldErrors = {}
+  const sessionId = parseSessionId(input.session)
+  const requests = trimmed(input.requests)
+  const requestsConsent = input.requestsConsent === true
+
+  if (sessionId === null) fieldErrors.session = 'SESSION_INVALID'
+  const nameError = checkName(input.name)
+  if (nameError) fieldErrors.name = nameError
+  const emailError = checkEmail(input.email)
+  if (emailError) fieldErrors.email = emailError
+  const phoneError = checkPhone(input.phone)
+  if (phoneError) fieldErrors.phone = phoneError
+  const partySizeText = typeof input.partySize === 'string' ? input.partySize : ''
+  if (!PARTY_SIZE_TEXT.test(partySizeText)) fieldErrors.partySize = 'PARTY_SIZE_INVALID'
+  const requestsError =
+    checkRequests(requests) ?? (requests !== '' && !requestsConsent ? 'REQUESTS_CONSENT_REQUIRED' : null)
+  if (requestsError) fieldErrors.requests = requestsError
+  if (input.privacyConsent !== true) fieldErrors.privacyConsent = 'PRIVACY_CONSENT_REQUIRED'
+
+  if (sessionId === null || Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors }
+  return {
+    ok: true,
+    value: {
+      sessionId,
+      name: trimmed(input.name),
+      email: trimmed(input.email),
+      phone: trimmed(input.phone),
+      partySize: Number(partySizeText),
+      requests,
+      requestsConsent,
+    },
+  }
 }

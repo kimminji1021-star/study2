@@ -778,3 +778,16 @@ describe('AC-TOUR-016 시드 명령과 자동 실행 금지', () => {
     expect(readme.indexOf('pnpm seed')).toBeGreaterThan(devServer)
   })
 })
+
+// SPEC-APPLY-001 AC-APPLY-011 — 접수 번호는 암호학적 난수로 만든다(plan.md §B.4). Math.random은 추측할 수 있다.
+const REFERENCE_CODE_MODULE = 'src/lib/reference-code.ts'
+
+describe('AC-APPLY-011 접수 번호 모듈의 난수 출처', () => {
+  it('접수 번호 모듈은 node:crypto를 import하고 Math.random을 담지 않는다', () => {
+    const source = readRepoFile(REFERENCE_CODE_MODULE)
+    expect(source.length).toBeGreaterThan(0)
+
+    expect(source).toMatch(/\bfrom\s*['"]node:crypto['"]/)
+    expect(source).not.toContain('Math.random')
+  })
+})
