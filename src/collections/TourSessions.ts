@@ -1,8 +1,12 @@
-import type { CollectionConfig, DateFieldValidation, NumberFieldSingleValidation } from 'payload'
+import { APIError, type CollectionConfig, type DateFieldValidation, type NumberFieldSingleValidation } from 'payload'
 import { date, number } from 'payload/shared'
 
 import { adminOnly, tourSessionsReadAccess } from '../lib/access'
 import { isEndAfterStart, isPositiveInteger } from '../lib/validation'
+
+// REQ-APPLY-004 / AC-APPLY-004가 고정 문자열로 확인하는 영문 안내(language.yaml error_messages: en)
+export const SESSION_HAS_APPLICATIONS_MESSAGE =
+  'Cannot delete a session that has applications. Applications must be kept for their retention period.'
 
 // siblingData는 수정 시 기존 문서 값과 합쳐져 들어오므로, 종료 일시만 바꾸는 수정도 같은 규칙으로 막힌다
 const validateEndsAt: DateFieldValidation = (value, args) => {
@@ -36,6 +40,22 @@ export const TourSessions: CollectionConfig = {
     create: adminOnly,
     update: adminOnly,
     delete: adminOnly,
+  },
+  hooks: {
+    // @MX:NOTE: [AUTO] 가정 A6·A7(SPEC-APPLY-001) — 신청이 연결된 회차는 관리자도 지울 수 없다. 회차가 사라지면
+    // 신청의 보관 기준일(회차 종료 일시)과 정원 기록이 사라진다. 정리는 신청 → 회차 → 투어 순서(plan.md §B.9)
+    beforeDelete: [
+      async ({ id, req }) => {
+        const applications = await req.payload.count({
+          collection: 'applications',
+          where: { session: { equals: id } },
+          req,
+        })
+        if (applications.totalDocs > 0) {
+          throw new APIError(SESSION_HAS_APPLICATIONS_MESSAGE, 400, undefined, true)
+        }
+      },
+    ],
   },
   fields: [
     { name: 'tour', label: '투어', type: 'relationship', relationTo: 'tours', required: true, index: true },

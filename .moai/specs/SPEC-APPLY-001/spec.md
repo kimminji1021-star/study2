@@ -2,7 +2,7 @@
 id: SPEC-APPLY-001
 title: "신청 흐름과 정원 — Applications 컬렉션, 비회원 신청·동의, 동시 신청에도 정원을 넘지 않는 자동 마감"
 version: "0.1.2"
-status: draft
+status: in-progress
 created: 2026-11-10
 updated: 2026-11-12
 author: study2

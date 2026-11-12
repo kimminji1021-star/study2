@@ -1,6 +1,7 @@
 // 카탈로그 접근 규칙 — SPEC-TOUR-001 REQ-TOUR-005, plan.md §B.5.
 // 쓰기(생성·수정·삭제)는 관리자만. 익명 읽기는 공개 투어, 공개 투어의 회차, 공개 투어가 대표 이미지로 참조하는 미디어만.
 // 이 규칙은 REST·GraphQL·업로드 파일 주소(checkFileAccess)와 overrideAccess: false인 로컬 API에 똑같이 적용된다.
+// 신청 컬렉션 규칙(SPEC-APPLY-001 REQ-APPLY-003): 신청 읽기는 관리자만(adminOnly), 그 밖에는 모두 거부(denyAll).
 import type { Access } from 'payload'
 
 // 관리자 인증 컬렉션 slug(가정 A1). Members 같은 다른 인증 컬렉션이 생겨도 관리자 권한을 얻지 않게 한다
@@ -13,6 +14,10 @@ export function isAdmin(user: { collection?: string } | null | undefined): boole
 }
 
 export const adminOnly: Access = ({ req }) => isAdmin(req.user)
+
+// 관리자를 포함한 누구에게도 허용하지 않는다(SPEC-APPLY-001 REQ-APPLY-003). 신청은 서버 제출 경로가
+// 로컬 API를 접근 규칙 없이(overrideAccess: true) 부르는 방법으로만 만들어진다
+export const denyAll: Access = () => false
 
 export const toursReadAccess: Access = ({ req }) => (isAdmin(req.user) ? true : { published: { equals: true } })
 

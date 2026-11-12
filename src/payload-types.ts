@@ -71,6 +71,8 @@ export interface Config {
     media: Media;
     tours: Tour;
     'tour-sessions': TourSession;
+    applications: Application;
+    'application-attempts': ApplicationAttempt;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -82,6 +84,8 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     tours: ToursSelect<false> | ToursSelect<true>;
     'tour-sessions': TourSessionsSelect<false> | TourSessionsSelect<true>;
+    applications: ApplicationsSelect<false> | ApplicationsSelect<true>;
+    'application-attempts': ApplicationAttemptsSelect<false> | ApplicationAttemptsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -203,6 +207,38 @@ export interface TourSession {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "applications".
+ */
+export interface Application {
+  id: number;
+  session: number | TourSession;
+  name: string;
+  email: string;
+  phone: string;
+  partySize: number;
+  requests?: string | null;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  referenceCode: string;
+  privacyConsentAt: string;
+  privacyPolicyVersion: string;
+  requestsConsentAt?: string | null;
+  cancelledAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "application-attempts".
+ */
+export interface ApplicationAttempt {
+  id: number;
+  keyHash: string;
+  attemptedAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -240,6 +276,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'tour-sessions';
         value: number | TourSession;
+      } | null)
+    | ({
+        relationTo: 'applications';
+        value: number | Application;
+      } | null)
+    | ({
+        relationTo: 'application-attempts';
+        value: number | ApplicationAttempt;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -351,6 +395,36 @@ export interface TourSessionsSelect<T extends boolean = true> {
   endsAt_tz?: T;
   capacity?: T;
   status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "applications_select".
+ */
+export interface ApplicationsSelect<T extends boolean = true> {
+  session?: T;
+  name?: T;
+  email?: T;
+  phone?: T;
+  partySize?: T;
+  requests?: T;
+  status?: T;
+  referenceCode?: T;
+  privacyConsentAt?: T;
+  privacyPolicyVersion?: T;
+  requestsConsentAt?: T;
+  cancelledAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "application-attempts_select".
+ */
+export interface ApplicationAttemptsSelect<T extends boolean = true> {
+  keyHash?: T;
+  attemptedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

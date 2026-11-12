@@ -1,5 +1,6 @@
 // Payload 설정 — 공식 with-postgres 템플릿(v3.93.0) 기반. sharp, 다국어(localization), 이메일 어댑터는
-// 넣지 않는다(SPEC-INFRA-001 plan.md §B.4, SPEC-TOUR-001 plan.md §B.1). 카탈로그 컬렉션은 SPEC-TOUR-001에서 더했다.
+// 넣지 않는다(SPEC-INFRA-001 plan.md §B.4, SPEC-TOUR-001 plan.md §B.1). 카탈로그 컬렉션은 SPEC-TOUR-001,
+// 신청 컬렉션은 SPEC-APPLY-001에서 더했다.
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -7,6 +8,8 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig } from 'payload'
 
+import { ApplicationAttempts } from './collections/ApplicationAttempts'
+import { Applications } from './collections/Applications'
 import { Media } from './collections/Media'
 import { Tours } from './collections/Tours'
 import { TourSessions } from './collections/TourSessions'
@@ -27,7 +30,8 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media, Tours, TourSessions],
+  // 신청 컬렉션 두 개는 SPEC-APPLY-001에서 더했다(REQ-APPLY-002)
+  collections: [Users, Media, Tours, TourSessions, Applications, ApplicationAttempts],
   editor: lexicalEditor(),
   // REST 멀티파트 요청을 일찍 끊는 보조 수단(SPEC-TOUR-001 plan.md §B.6). 로컬 API에는 적용되지 않으므로
   // 5MB 판정의 근거는 media 컬렉션의 beforeOperation 훅이다. 정확히 5MB인 REST 업로드가 막히지 않게 같은 값으로 둔다.
