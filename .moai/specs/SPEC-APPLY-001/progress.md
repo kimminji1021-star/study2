@@ -150,6 +150,53 @@ AssertionError: expected 0 to be greater than or equal to 1                     
 - 커버리지: `submit-application.ts`의 미실행 줄 123-124·128-129는 `beginTransaction` 실패·`null` 반환(트랜잭션 꺼짐) 분기다. 실제 DB로 재현할 수 없어 plan.md R4대로 코드 검토 항목으로 둔다.
 - `pnpm test` 출력의 pg `DeprecationWarning: Calling client.query() when the client is already executing a query`는 기존 파일(`tests/integration/tour-collections.spec.ts` 단독 실행에서도 1건)에서도 나오는 Payload 내부 동작이다 — M2가 만든 경고가 아니다.
 
+### M3 — 화면 표시에 점유 인원 반영
+
+기준 HEAD `7daa1b6`(main, M2 병합). 실행 위치는 격리 worktree(`.claude/worktrees/agent-ab3bcf9588e763546`), PostgreSQL 컨테이너는 본 checkout과 공유. 긴 출력은 `.moai/state/verify/apply001-m3/`(git 제외). 시작 시 `git merge --ff-only 7daa1b6` 후 `git log --oneline -1` = `7daa1b6 feat(SPEC-APPLY-001): M2 점유 인원과 정원 확인 구간`, `pnpm install --frozen-lockfile` 종료 코드 0, `docker compose ps` = `postgres healthy`.
+
+**RED** (구현 전, `pnpm exec vitest run --coverage.enabled=false tests/integration/catalog-occupancy.spec.ts`, 종료 코드 1, `red.log`):
+
+```text
+       × 목록의 가장 가까운 회차(S1)와 상세의 S1: 남은 자리 2 / 정원 5
+-   "remainingSeats": 2,
++   "remainingSeats": 5,
+       × 정원 3인 S2에 대기 3명을 만들면 남은 자리 0, 선택 불가 사유 full
+-   "reason": "full",
+-   "remainingSeats": 0,
+-   "selectable": false,
++   "reason": null,
++   "remainingSeats": 3,
++   "selectable": true,
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+```
+
+질의 수 사례는 구현 전에도 통과했다(조회 계층이 점유 인원을 아예 세지 않아 질의 수가 회차 수와 무관했기 때문). 이 사례가 실제로 N+1을 잡는지는 아래 변이 확인으로 보였다.
+
+**GREEN** (`catalog-occupancy` + 기존 `catalog-query` + `session-availability` 단위, 종료 코드 0, `green.log`): `Test Files 3 passed (3)` / `Tests 30 passed (30)`.
+
+**변이 확인 (질의 수)**: `catalog.ts`의 `toSessions`를 회차마다 `getOccupiedSeatsBySession(payload, [doc.id])`를 부르는 코드로 바꿔 같은 파일 실행 → 종료 코드 1, `AssertionError: expected 19 to be 14 // Object.is equality`(목록 조회, 회차 6개 측정이 1개 측정보다 5회 많음, `mutation-n-plus-1.log`). 원래 코드로 되돌린 뒤 GREEN 재확인.
+
+**M3 종료 시 전체 검증** (작업 트리 = M3 변경 전부, 커밋 직전):
+
+| 명령 | 종료 코드 | 결과 | M2 대비 |
+|---|---|---|---|
+| `pnpm typecheck` | 0 | 출력 없음 | 같음 |
+| `pnpm lint` | 0 | 출력 없음 | 같음 |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | 같음 |
+| `pnpm test` | 0 | `Test Files 26 passed (26)` / `Tests 467 passed (467)` / `Lines : 98.84% ( 341/345 )` | +1 파일, +4건, 실패 0 |
+| `pnpm e2e` | 0 | `26 passed (39.7s)` | 같음(26) |
+
+| AC | 상태 | 검증 | 실제 결과 |
+|---|---|---|---|
+| AC-APPLY-005 | PASS | `tests/integration/catalog-occupancy.spec.ts` — 이 기준 전용 데이터로 점유 인원 모듈 S1=3(취소 2명 제외)·빈 회차 0, 목록의 가장 가까운 회차와 상세의 S1 `remainingSeats 2 / capacity 5`, S2(정원 3, 대기 3) `{capacity:3, remainingSeats:0, selectable:false, reason:'full'}`, 투어 Q 회차 1개 → 6개에서 목록·상세 각각 `pool.query` 수 동일·1 이상, 네 구간 모두 `connect` 수 = `query` 수 | `pnpm test` 467/467 + 변이 확인 |
+
+결정 메모:
+
+- `catalog.ts`에 `toSessions(payload, docs, now)`를 두어 목록·상세가 같은 경로로 점유 인원 맵을 한 번 조회한다. 회차가 0개면 `getOccupiedSeatsBySession`이 질의 없이 빈 맵을 돌려준다(M2).
+- `catalog.ts`·`session-availability.ts`의 신청 SPEC 확장 `@MX:NOTE`를 "확장 완료"로 갱신했다. `SessionList`의 `@MX:NOTE`는 화면을 바꾸는 M5에서 갱신한다.
+- 화면 컴포넌트는 바꾸지 않았다. 목록·상세는 이미 조회 계층의 `availability`만 그리므로 남은 자리 표시가 자동으로 점유 인원을 반영한다(화면 확인은 M5 E2E AC-APPLY-006).
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

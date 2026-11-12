@@ -4,6 +4,7 @@ import type { Payload, Where } from 'payload'
 
 import type { Media, Tour, TourSession } from '../payload-types'
 import { listUpcomingSessions, pickNearestSelectableSession, sortToursForListing } from './catalog-order'
+import { getOccupiedSeatsBySession } from './occupancy'
 import { getSessionAvailability, type SessionAvailability, type SessionStatus } from './session-availability'
 import { isValidSlug } from './validation'
 
@@ -51,10 +52,8 @@ function toImage(heroImage: Tour['heroImage']): CatalogImage | null {
   return { url: media.url, alt: media.alt, width: media.width ?? null, height: media.height ?? null }
 }
 
-function toSession(doc: TourSession, now: Date): CatalogSession {
-  // @MX:NOTE: [AUTO] 신청 SPEC 확장 지점 — 지금은 점유 인원을 넘기지 않아 0으로 계산된다.
-  //   신청 기능이 생기면 회차별 점유 인원 맵을 한 번에 조회해 여기서 occupiedSeats로 넘긴다(회차마다 조회하지 않는다)
-  const availability = getSessionAvailability(doc, { now })
+function toSession(doc: TourSession, now: Date, occupiedSeats: number): CatalogSession {
+  const availability = getSessionAvailability(doc, { now, occupiedSeats })
   return {
     id: doc.id,
     startsAt: doc.startsAt,
@@ -91,6 +90,16 @@ async function findUpcomingSessions(payload: Payload, tourFilter: Where, now: Da
   return result.docs
 }
 
+// @MX:NOTE: [AUTO] 신청 SPEC(SPEC-APPLY-001 M3)에서 확장 완료 — 조회한 회차 묶음의 점유 인원을 GROUP BY 질의 1회로 세어
+//   단일 계산 지점(getSessionAvailability)에 넘긴다. 회차마다 따로 세지 않으므로 질의 수는 회차 수와 무관하다(REQ-APPLY-005)
+async function toSessions(payload: Payload, docs: TourSession[], now: Date): Promise<CatalogSession[]> {
+  const occupied = await getOccupiedSeatsBySession(
+    payload,
+    docs.map((doc) => doc.id),
+  )
+  return docs.map((doc) => toSession(doc, now, occupied.get(doc.id) ?? 0))
+}
+
 const tourIdOf = (session: TourSession) => (typeof session.tour === 'number' ? session.tour : session.tour.id)
 
 /** 공개 투어 목록(카드용). 선택 가능한 회차가 있는 투어가 먼저 — REQ-TOUR-009. */
@@ -101,13 +110,14 @@ export async function listPublishedTours(
   const tours = await payload.find({ collection: 'tours', depth: 1, pagination: false, ...ANONYMOUS_READ })
   if (tours.docs.length === 0) return []
 
-  const sessions = await findUpcomingSessions(payload, { tour: { in: tours.docs.map((tour) => tour.id) } }, now)
+  const docs = await findUpcomingSessions(payload, { tour: { in: tours.docs.map((tour) => tour.id) } }, now)
+  const sessions = await toSessions(payload, docs, now)
   const sessionsByTour = new Map<number, CatalogSession[]>()
-  for (const doc of sessions) {
+  docs.forEach((doc, index) => {
     const list = sessionsByTour.get(tourIdOf(doc)) ?? []
-    list.push(toSession(doc, now))
+    list.push(sessions[index])
     sessionsByTour.set(tourIdOf(doc), list)
-  }
+  })
 
   return sortToursForListing(
     tours.docs.map((tour) => ({
@@ -141,9 +151,6 @@ export async function getTourDetailBySlug(
     ...toCard(tour),
     description: tour.description,
     meetingPoint: tour.meetingPoint,
-    sessions: listUpcomingSessions(
-      sessions.map((doc) => toSession(doc, now)),
-      now,
-    ),
+    sessions: listUpcomingSessions(await toSessions(payload, sessions, now), now),
   }
 }
