@@ -71,7 +71,7 @@ AssertionError: expected [ 'media', 'tour-sessions', …(2) ] to deeply equal [ 
 | AC-APPLY-001 | PASS | `tests/integration/users-auth.spec.ts` — 시스템 컬렉션 제외 목록 정렬 = `['application-attempts','applications','media','tour-sessions','tours','users']`, 필터 전 목록이 더 김, 기존 인증 흐름 4건 | `pnpm test` 365/365 통과 |
 | AC-APPLY-002 | PASS | `tests/integration/application-collections.spec.ts`(필수 값·기본 상태 pending·인원 0/11/1.5 거부·1/10 저장·요청 사항 501 거부/500 저장·필수 필드 8종 누락 각 1건·접수 번호 중복 거부 후 1건만 남음·이메일 받는 표본 3개 저장) + `tests/unit/application-input.spec.ts`(같은 표본: 받는 3개 통과, 거부 5개 `EMAIL_INVALID`, 255자 경계) | `pnpm test` 365/365 통과 |
 | AC-APPLY-003 | 부분 PASS (로컬 API) | `tests/integration/application-access.spec.ts` — 익명·관리자 각각 `applications`·`application-attempts` 생성·수정·삭제 `Forbidden` + 전후 스냅숏 동일, 익명 신청 조회 `Forbidden`·관리자 조회에 준비한 신청 1건, 익명·관리자 시도 기록 조회 `Forbidden`(대상 존재 먼저 단언), `application-attempts`의 `admin.hidden === true` | 통과. REST·GraphQL 부분은 M5 E2E 범위 |
-| AC-APPLY-003 (수동) | 보류 — 수동 확인 필요 | 관리자 화면에서 신청 목록·상세 열림, 입력란 편집 불가, "새로 만들기"·저장 버튼 없음, 메뉴에 신청 시도 기록 없음 | **run 에이전트가 브라우저로 확인할 수 없어 미실시.** 사람이 `pnpm dev` 후 확인해 이 행을 갱신해야 한다 |
+| AC-APPLY-003 (수동) | PASS (사람 확인) | 관리자 화면에서 신청 목록·상세 열림, 입력란 편집 불가, "새로 만들기"·저장 버튼 없음, 메뉴에 신청 시도 기록 없음 | 2026-11-12 사용자가 pnpm dev 관리자 화면에서 직접 확인: 메뉴에 Applications 있음·Application Attempts 없음, 목록에 Create New 없음, 상세(SB-4KJFS-26FAM) 입력란 모두 회색 편집 불가·Save 버튼 없음 |
 | AC-APPLY-004 | PASS | `application-collections.spec.ts` — 관리자(접근 규칙 적용)의 회차 삭제가 `Cannot delete a session that has applications` 오류, 회차·신청 그대로, 신청 삭제 후 회차 삭제 성공 | `pnpm test` 365/365 통과 |
 
 결정 메모:
@@ -393,7 +393,7 @@ AssertionError: expected '{\n  code: \'INTERNAL_ERROR\',\n  err…' not to conta
 | AC-APPLY-002 필드 검증·이메일 일관성 | PASS | M1·M2 `application-collections.spec.ts`, `tests/unit/application-input.spec.ts` | `pnpm test` 517/517 |
 | AC-APPLY-003 권한 — 로컬 API | PASS | M1 `application-access.spec.ts` | `pnpm test` 517/517 |
 | AC-APPLY-003 권한 — REST·GraphQL | PASS | M5 `tests/e2e/application-api.spec.ts` | `pnpm e2e` 40/40 |
-| AC-APPLY-003 권한 — 관리자 화면(수동) | **PENDING — 사람 확인 필요** | 관리자 화면에서 신청 목록·상세가 열리고 입력란 편집 불가, "새로 만들기"·저장 버튼 없음, 메뉴에 신청 시도 기록 없음 | **미실시.** run 에이전트는 브라우저로 확인할 수 없다. 사람이 `pnpm dev` 후 확인해 이 행을 갱신해야 한다 |
+| AC-APPLY-003 권한 — 관리자 화면(수동) | **PASS (사람 확인)** | 관리자 화면에서 신청 목록·상세가 열리고 입력란 편집 불가, "새로 만들기"·저장 버튼 없음, 메뉴에 신청 시도 기록 없음 | 2026-11-12 사용자가 pnpm dev 관리자 화면에서 직접 확인: 메뉴에 Applications 있음·Application Attempts 없음, 목록에 Create New 없음, 상세(SB-4KJFS-26FAM) 입력란 모두 회색 편집 불가·Save 버튼 없음 |
 | AC-APPLY-004 회차 삭제 거부 | PASS | M1 `application-collections.spec.ts` | `pnpm test` 517/517 |
 | AC-APPLY-005 점유 인원·질의 수 | PASS | M2 `submit-application.spec.ts`(정의), M3 `catalog-occupancy.spec.ts`(조회 계층·질의 수) + N+1 변이 | `pnpm test` 517/517 |
 | AC-APPLY-006 목록·상세 남은 자리·"신청하기" | PASS | M5 `tests/e2e/apply.spec.ts` | `pnpm e2e` 40/40 |
@@ -417,7 +417,7 @@ AssertionError: expected '{\n  code: \'INTERNAL_ERROR\',\n  err…' not to conta
 
 ### 남은 항목
 
-- AC-APPLY-003 관리자 화면 수동 확인 — **PENDING, 사람이 해야 함**
+- AC-APPLY-003 관리자 화면 수동 확인 — **완료(2026-11-12 사용자 확인)**
 - 동의 고지·보유 기간 문구 — **출시 전 전문가 확인 필요**(`legal_review_required: true`)
 - 잔여 위험 R20(COMMIT 실패가 예외 없이 끝날 수 있음)과 R4(`beginTransaction` 실패·`null` 분기 — 실제 DB로 재현 불가, 코드 검토 항목, 미실행 줄 `submit-application.ts` 4줄)는 plan.md §G 그대로 남는다
 
@@ -425,7 +425,7 @@ AssertionError: expected '{\n  code: \'INTERNAL_ERROR\',\n  err…' not to conta
 run_complete_at: 2026-11-12
 run_commit_sha: 88df154   # M6 커밋(sync 단계에서 기록)
 run_status: complete-with-pending-manual-check
-ac_pass_count: 16          # AC-APPLY-003은 자동화 부분(로컬 API·REST·GraphQL) PASS, 관리자 화면 수동 확인만 PENDING
+ac_pass_count: 16          # AC-APPLY-003은 자동화 부분(로컬 API·REST·GraphQL) PASS, 관리자 화면 수동 확인도 2026-11-12 사용자 확인 완료
 ac_fail_count: 0
 ac_pending_manual: [AC-APPLY-003-admin-ui]
 preserve_list_post_run_count: 0
@@ -466,7 +466,7 @@ b12_self_test:
 changelog_entry_position: "[Unreleased] > 추가됨 첫 항목(SPEC-TOUR-001 위)"
 carry_over:
   manual_check:
-    - "AC-APPLY-003 관리자 화면 수동 확인 — 사람이 pnpm dev 후 확인해야 함(미실시)"
+    - "AC-APPLY-003 관리자 화면 수동 확인 — 2026-11-12 사용자 확인 완료"
   legal:
     - "동의 고지·보유 기간 문구 — 초안, 출시 전 전문가 검토 필요(legal_review_required: true)"
 deferred_optional_findings:   # 기록만, 코드 변경 없음
