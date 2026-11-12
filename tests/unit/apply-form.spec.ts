@@ -30,6 +30,7 @@ describe('readApplyForm — FormData → 신청 처리 함수 입력', () => {
         requests: '창가 자리',
         privacyConsent: 'on',
         requestsConsent: 'on',
+        ageConfirmed: 'on',
         website: '',
       }),
     )
@@ -42,6 +43,7 @@ describe('readApplyForm — FormData → 신청 처리 함수 입력', () => {
       requests: '창가 자리',
       privacyConsent: true,
       requestsConsent: true,
+      ageConfirmed: true,
       website: '',
     })
   })
@@ -50,6 +52,7 @@ describe('readApplyForm — FormData → 신청 처리 함수 입력', () => {
     const input = readApplyForm(form({ session: '3' }))
     expect(input.privacyConsent).toBe(false)
     expect(input.requestsConsent).toBe(false)
+    expect(input.ageConfirmed).toBe(false)
     expect(input.name).toBeUndefined()
     expect(input.website).toBeUndefined()
   })
@@ -80,6 +83,7 @@ describe('refillValues — 검증 오류 뒤 다시 채울 방문자 본인 입�
       requests: 'r',
       privacyConsent: false,
       requestsConsent: false,
+      ageConfirmed: false,
     })
   })
 
@@ -92,6 +96,7 @@ describe('refillValues — 검증 오류 뒤 다시 채울 방문자 본인 입�
       requests: '',
       privacyConsent: false,
       requestsConsent: false,
+      ageConfirmed: false,
     })
   })
 })
@@ -122,6 +127,7 @@ const FIELD_CODES: FieldErrorCode[] = [
   'REQUESTS_TOO_LONG',
   'REQUESTS_CONSENT_REQUIRED',
   'PRIVACY_CONSENT_REQUIRED',
+  'AGE_CONFIRM_REQUIRED',
 ]
 
 const SUBMIT_CODES: SubmitErrorCode[] = [
@@ -160,6 +166,12 @@ describe('화면 문구표(apply-messages)', () => {
       confirmed: '확정',
       cancelled: '취소',
     })
+  })
+
+  it('만 14세 이상 확인 체크 상자 라벨과 누락 안내 문구', () => {
+    expect(APPLY_TEXT.ageConfirmLabel).toBe('만 14세 이상입니다(필수)')
+    expect(FIELD_ERROR_MESSAGES.AGE_CONFIRM_REQUIRED).toContain('만 14세 이상')
+    expect(FIELD_ERROR_MESSAGES.AGE_CONFIRM_REQUIRED).toContain('보호자')
   })
 
   it('신청 불가 안내 고정 문자열(AC-APPLY-007)', () => {

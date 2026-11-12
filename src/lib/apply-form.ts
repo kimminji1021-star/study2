@@ -15,6 +15,7 @@ export type ApplyFormValues = {
   requests: string
   privacyConsent: boolean
   requestsConsent: boolean
+  ageConfirmed: boolean
 }
 
 export type ApplyFormState =
@@ -38,6 +39,7 @@ export function readApplyForm(form: FormDataReader): ApplicationFormInput {
     requests: textOf(form, 'requests'),
     privacyConsent: textOf(form, 'privacyConsent') !== undefined,
     requestsConsent: textOf(form, 'requestsConsent') !== undefined,
+    ageConfirmed: textOf(form, 'ageConfirmed') !== undefined,
     [HONEYPOT_FIELD]: textOf(form, HONEYPOT_FIELD),
   }
 }
@@ -54,6 +56,7 @@ export function refillValues(input: ApplicationFormInput): ApplyFormValues {
     requests: asText(input.requests),
     privacyConsent: input.privacyConsent === true,
     requestsConsent: input.requestsConsent === true,
+    ageConfirmed: input.ageConfirmed === true,
   }
 }
 

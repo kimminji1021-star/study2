@@ -24,6 +24,7 @@ export type FieldErrorCode =
   | 'REQUESTS_TOO_LONG'
   | 'REQUESTS_CONSENT_REQUIRED'
   | 'PRIVACY_CONSENT_REQUIRED'
+  | 'AGE_CONFIRM_REQUIRED'
 
 // @MX:NOTE: [AUTO] Payload 3.93.0 email 필드 검증 정규식의 복사본(node_modules/payload/dist/fields/validations.js 89~112행).
 // Payload가 정규식을 내보내지 않아 복사했다. 어긋나면 이메일 표본 일관성 테스트(AC-APPLY-002 단위·통합)가 실패한다
@@ -98,6 +99,8 @@ export type ApplicationFormInput = {
   requests?: unknown
   privacyConsent?: unknown
   requestsConsent?: unknown
+  /** 만 14세 이상 확인(필수 체크 상자). 개인정보 보호법 제22조의2 — 만 14세 미만은 보호자가 신청한다 */
+  ageConfirmed?: unknown
   /** 허니팟 입력란(화면에 보이지 않음). 사람은 비워 두고, 값이 있으면 봇으로 보고 거부한다(REQ-APPLY-013) */
   website?: unknown
 }
@@ -110,7 +113,8 @@ export function isHoneypotFilled(input: Pick<ApplicationFormInput, 'website'>): 
   return input.website !== undefined && input.website !== null && input.website !== ''
 }
 
-export type ApplicationField = 'session' | 'name' | 'email' | 'phone' | 'partySize' | 'requests' | 'privacyConsent'
+export type ApplicationField =
+  'session' | 'name' | 'email' | 'phone' | 'partySize' | 'requests' | 'privacyConsent' | 'ageConfirmed'
 export type FieldErrors = Partial<Record<ApplicationField, FieldErrorCode>>
 
 /** 검증을 통과한 값. 문자열은 앞뒤 공백을 뺐고, 요청 사항은 비어 있을 수 있다. */
@@ -153,6 +157,7 @@ export function validateApplicationInput(input: ApplicationFormInput): Applicati
     checkRequests(requests) ?? (requests !== '' && !requestsConsent ? 'REQUESTS_CONSENT_REQUIRED' : null)
   if (requestsError) fieldErrors.requests = requestsError
   if (input.privacyConsent !== true) fieldErrors.privacyConsent = 'PRIVACY_CONSENT_REQUIRED'
+  if (input.ageConfirmed !== true) fieldErrors.ageConfirmed = 'AGE_CONFIRM_REQUIRED'
 
   if (sessionId === null || Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors }
   return {

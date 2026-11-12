@@ -1,5 +1,6 @@
 'use client'
 // 신청 양식 — SPEC-APPLY-001 REQ-APPLY-007·008·014, 디자인 핸드오프 화면 4(신청 정보 입력), plan.md §B.7·§B.8.
+// 만 14세 이상 확인 체크 상자는 2026-11-12 출시 전 보완으로 더했다(필수 동의 옆).
 // - 서버 액션을 useActionState로 부른다. 자바스크립트가 없어도 양식이 그대로 제출된다(성공하면 303 리다이렉트).
 // - 오류 안내는 해당 입력란의 aria-describedby로 연결한다. 검증 오류 뒤에는 방문자 본인 입력값을 다시 채운다(가정 A3).
 // - 허니팟(website)은 화면 밖에 두고 보조 기술·키보드 이동에서 뺀다. display:none을 쓰지 않는다(일부 봇이 숨김 입력란을 건너뜀).
@@ -8,7 +9,13 @@ import { useActionState, type ReactNode } from 'react'
 import { INITIAL_APPLY_FORM_STATE, type ApplyFormValues } from '../../../lib/apply-form'
 import { HONEYPOT_FIELD, type ApplicationField } from '../../../lib/application-input'
 import { APPLY_TEXT, FIELD_ERROR_MESSAGES, SUBMIT_ERROR_MESSAGES } from '../../../lib/apply-messages'
-import { REQUESTS_CONSENT, REQUIRED_CONSENT, SENSITIVE_INFO_NOTICE, type ConsentNotice } from '../../../lib/consent'
+import {
+  AGE_NOTICE,
+  REQUESTS_CONSENT,
+  REQUIRED_CONSENT,
+  SENSITIVE_INFO_NOTICE,
+  type ConsentNotice,
+} from '../../../lib/consent'
 import { submitApplicationAction } from './actions'
 
 const EMPTY_VALUES: ApplyFormValues = {
@@ -19,6 +26,7 @@ const EMPTY_VALUES: ApplyFormValues = {
   requests: '',
   privacyConsent: false,
   requestsConsent: false,
+  ageConfirmed: false,
 }
 
 // 한 화면에 양식이 하나뿐이라 고정 id를 쓴다
@@ -190,6 +198,26 @@ export function ApplyForm({ sessionId, partySizes }: { sessionId: number; partyS
             <span className="font-medium">{APPLY_TEXT.privacyConsentLabel}</span>
           </label>
           <FieldError field="privacyConsent" message={message('privacyConsent')} />
+        </div>
+
+        {/* 만 14세 이상 확인(필수). 만 14세 미만은 보호자가 신청하도록 안내한다(개인정보 보호법 제22조의2) */}
+        <div className="flex flex-col gap-(--space-2)">
+          <p id="apply-age-notice" className="text-(length:--text-small) text-(--color-text-2)">
+            {AGE_NOTICE}
+          </p>
+          <label className="flex min-h-(--touch-min) cursor-pointer items-center gap-(--space-3)">
+            <input
+              type="checkbox"
+              name="ageConfirmed"
+              required
+              defaultChecked={values.ageConfirmed}
+              aria-invalid={has('ageConfirmed') || undefined}
+              aria-describedby={describedBy('apply-age-notice', has('ageConfirmed') && errorId('ageConfirmed'))}
+              className="size-5 shrink-0 accent-(--color-accent)"
+            />
+            <span className="font-medium">{APPLY_TEXT.ageConfirmLabel}</span>
+          </label>
+          <FieldError field="ageConfirmed" message={message('ageConfirmed')} />
         </div>
 
         <div className="flex flex-col gap-(--space-2)">

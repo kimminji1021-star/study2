@@ -35,7 +35,7 @@ export type SubmitApplicationResult =
 export type SubmitApplicationOptions = {
   /** 접속 IP(서버 액션이 x-forwarded-for 첫 값 등에서 뽑는다). 횟수 제한 키를 만드는 데만 쓰고 저장하지 않는다 */
   clientIp: string
-  /** 처리 시각. 시작 여부 판단, 동의 일시, 신청 시도 기록 시각에 쓴다. 기본값은 호출 시점의 현재 시각 */
+  /** 처리 시각. 시작 여부 판단, 동의 일시·만 14세 이상 확인 일시, 신청 시도 기록 시각에 쓴다. 기본값은 호출 시점의 현재 시각 */
   now?: Date
   /** 회차 행 잠금 대기 제한(밀리초). 기본 DEFAULT_LOCK_TIMEOUT_MS */
   lockTimeoutMs?: number
@@ -179,6 +179,8 @@ export async function submitApplication(
         referenceCode,
         privacyConsentAt: now.toISOString(),
         privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+        // 입력 검증이 만 14세 이상 확인을 요구하므로 여기까지 온 신청은 모두 확인을 거쳤다
+        ageConfirmedAt: now.toISOString(),
         ...(keepRequests ? { requests: values.requests, requestsConsentAt: now.toISOString() } : {}),
       },
       req,

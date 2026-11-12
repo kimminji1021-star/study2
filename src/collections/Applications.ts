@@ -114,6 +114,9 @@ export const Applications: CollectionConfig = {
     { name: 'privacyConsentAt', label: '필수 동의 일시', type: 'date', required: true },
     { name: 'privacyPolicyVersion', label: '동의 문구 버전', type: 'text', required: true },
     { name: 'requestsConsentAt', label: '요청 사항 선택 동의 일시', type: 'date' },
+    // 만 14세 이상 확인 일시(2026-11-12 출시 전 보완). 서버 제출 경로는 항상 채우지만, 이 필드가 생기기 전의 신청이
+    // 계속 유효하도록 DB 수준 필수로 두지 않는다
+    { name: 'ageConfirmedAt', label: '만 14세 이상 확인 일시', type: 'date' },
     { name: 'cancelledAt', label: '취소일', type: 'date' },
   ],
 }

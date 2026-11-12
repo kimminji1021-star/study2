@@ -17,6 +17,7 @@ export const FIELD_ERROR_MESSAGES: Record<FieldErrorCode, string> = {
   REQUESTS_TOO_LONG: '요청 사항은 500자 이하로 입력해 주세요.',
   REQUESTS_CONSENT_REQUIRED: '요청 사항을 남기려면 선택 동의에 체크하거나 입력란을 비워 주세요.',
   PRIVACY_CONSENT_REQUIRED: '개인정보 수집·이용에 동의해야 신청할 수 있습니다.',
+  AGE_CONFIRM_REQUIRED: '만 14세 이상임을 확인해야 신청할 수 있습니다. 만 14세 미만은 보호자가 신청해 주세요.',
 }
 
 /** 양식 위에 보이는 안내(제출 결과 코드별). 허니팟 거부는 이유를 드러내지 않는다(REQ-APPLY-013). */
@@ -47,6 +48,7 @@ export const APPLY_TEXT = {
   backToTour: '투어 상세로 돌아가기',
   privacyConsentLabel: '개인정보 수집·이용에 동의합니다(필수)',
   requestsConsentLabel: '요청 사항 수집·이용에 동의합니다(선택)',
+  ageConfirmLabel: '만 14세 이상입니다(필수)',
   submit: '신청 접수하기',
   submitting: '접수하는 중…',
   completeTitle: '신청이 접수되었습니다',

@@ -124,6 +124,14 @@ async function fillApplication(page: Page, values: ApplicantValues): Promise<voi
   await page.getByLabel('인원', { exact: true }).selectOption(values.partySize)
 }
 
+const ageCheckbox = (page: Page) => page.getByRole('checkbox', { name: /만 14세 이상입니다/ })
+
+/** 필수 체크 상자 두 개(개인정보 필수 동의, 만 14세 이상 확인)를 체크한다. */
+async function checkRequired(page: Page): Promise<void> {
+  await page.getByRole('checkbox', { name: /개인정보 수집·이용에 동의합니다/ }).check()
+  await ageCheckbox(page).check()
+}
+
 test.describe('목록·상세의 남은 자리와 "신청하기"(AC-APPLY-006)', () => {
   test('목록 카드와 상세 회차가 점유 인원을 반영하고, 회차를 고른 뒤 신청하기를 누르면 신청 화면으로 간다', async ({
     page,
@@ -190,17 +198,29 @@ test.describe('신청 화면 구성·404·신청 불가 안내(AC-APPLY-007)', (
     await expect(requestsConsent).toHaveCount(1)
     await expect(privacy).not.toBeChecked()
     await expect(requestsConsent).not.toBeChecked()
+    const age = ageCheckbox(page)
+    await expect(age).toHaveCount(1)
+    await expect(age).not.toBeChecked()
+    await expect(age).toHaveAttribute('required', '')
+    expect((await describedByText(page, age)).join('\n')).toContain('만 14세 미만은 보호자가 신청해 주세요')
 
     const required = (await describedByText(page, privacy)).join('\n')
-    for (const phrase of ['수집 항목', '이용 목적', '보유 기간', '5년', '거부하면 신청할 수 없습니다']) {
+    for (const phrase of [
+      '수집 항목',
+      '이용 목적',
+      '보유 기간',
+      '5년',
+      '전자상거래 등에서의 소비자보호에 관한 법률',
+      '거부하면 신청할 수 없습니다',
+    ]) {
       expect(required, `필수 고지: ${phrase}`).toContain(phrase)
     }
     const optional = (await describedByText(page, requestsConsent)).join('\n')
-    for (const phrase of ['투어 종료 후 지체 없이 파기', '거부해도 신청할 수 있습니다']) {
+    for (const phrase of ['민감정보 제외', '투어 종료 후 지체 없이 파기', '거부해도 신청할 수 있습니다']) {
       expect(optional, `선택 고지: ${phrase}`).toContain(phrase)
     }
     const requestsHints = await describedByText(page, page.getByLabel('요청 사항', { exact: true }))
-    expect(requestsHints.some((text) => text.includes('건강·장애 등 민감한 정보는 적지 마세요'))).toBe(true)
+    expect(requestsHints.some((text) => text.includes('민감한 정보는 적지 마세요'))).toBe(true)
 
     const partyOptions = page.getByLabel('인원', { exact: true }).locator('option')
     await expect(partyOptions).toHaveCount(10)
@@ -275,7 +295,7 @@ test.describe('입력 오류 안내(AC-APPLY-008 화면 부분)', () => {
     expectE2ePort(page)
     await fillApplication(page, { name, email, phone: `010-66${randomDigits(6)}`, partySize: '1' })
     await page.getByLabel('요청 사항', { exact: true }).fill(`${marker}-요청`)
-    await page.getByRole('checkbox', { name: /개인정보 수집·이용에 동의합니다/ }).check()
+    await checkRequired(page)
     await page.getByRole('button', { name: '신청 접수하기' }).click()
 
     const requests = page.getByLabel('요청 사항', { exact: true })
@@ -284,9 +304,45 @@ test.describe('입력 오류 안내(AC-APPLY-008 화면 부분)', () => {
       .toContain('요청 사항을 남기려면 선택 동의에 체크하거나 입력란을 비워 주세요')
     expect(new URL(page.url()).pathname).toBe('/apply')
     await expect(page.getByLabel('이름', { exact: true })).toHaveValue(name)
+    // 다시 그린 화면에서도 체크한 만 14세 이상 확인이 유지된다
+    await expect(ageCheckbox(page)).toBeChecked()
 
     const saved = await payload.count({ collection: 'applications', where: { email: { equals: email } } })
     expect(saved.totalDocs).toBe(0)
+  })
+
+  test('만 14세 이상 확인 없이 제출하면 그 체크 상자 옆에 안내가 보이고 신청이 생기지 않으며, 체크하면 접수된다', async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ 'x-forwarded-for': ips.next() })
+    const email = `${marker}-age@example.test`
+    const name = `${marker}-나이`
+
+    await page.goto(`/apply?session=${fixture.validation.session.id}`)
+    expectE2ePort(page)
+    await fillApplication(page, { name, email, phone: `010-77${randomDigits(6)}`, partySize: '1' })
+    await page.getByRole('checkbox', { name: /개인정보 수집·이용에 동의합니다/ }).check()
+    await expect(ageCheckbox(page)).not.toBeChecked()
+    // 브라우저의 필수 검사(required)를 꺼서, 그 검사를 거치지 않은 제출에도 서버 검증이 막는지 본다
+    await page.locator('form').evaluate((form) => form.setAttribute('novalidate', ''))
+    await page.getByRole('button', { name: '신청 접수하기' }).click()
+
+    await expect
+      .poll(async () => (await describedByText(page, ageCheckbox(page))).join('\n'))
+      .toContain('만 14세 이상임을 확인해야 신청할 수 있습니다')
+    await expect(ageCheckbox(page)).toHaveAttribute('aria-invalid', 'true')
+    expect(new URL(page.url()).pathname).toBe('/apply')
+    await expect(page.getByLabel('이름', { exact: true })).toHaveValue(name)
+    const before = await payload.count({ collection: 'applications', where: { email: { equals: email } } })
+    expect(before.totalDocs).toBe(0)
+
+    await ageCheckbox(page).check()
+    await page.getByRole('button', { name: '신청 접수하기' }).click()
+    await page.waitForURL((url) => url.pathname.startsWith('/apply/complete/'))
+    expectE2ePort(page)
+    const saved = await payload.find({ collection: 'applications', where: { email: { equals: email } }, depth: 0 })
+    expect(saved.totalDocs).toBe(1)
+    expect(saved.docs[0].ageConfirmedAt ?? null).not.toBeNull()
   })
 })
 
@@ -310,7 +366,7 @@ test.describe('접수 완료와 재제출 방지(AC-APPLY-012, AC-APPLY-015 URL)
     await page.goto(`/apply?session=${a.id}`)
     expectE2ePort(page)
     await fillApplication(page, applicant)
-    await page.getByRole('checkbox', { name: /개인정보 수집·이용에 동의합니다/ }).check()
+    await checkRequired(page)
     await page.getByRole('button', { name: '신청 접수하기' }).click()
     await page.waitForURL((url) => url.pathname.startsWith('/apply/complete/'))
     expectE2ePort(page)
@@ -390,7 +446,7 @@ test.describe('접수 완료와 재제출 방지(AC-APPLY-012, AC-APPLY-015 URL)
         phone: `010-44${randomDigits(6)}`,
         partySize: '1',
       })
-      await page.getByRole('checkbox', { name: /개인정보 수집·이용에 동의합니다/ }).check()
+      await checkRequired(page)
 
       const postRequest = page.waitForRequest((request) => request.method() === 'POST')
       await page.getByRole('button', { name: '신청 접수하기' }).click()

@@ -58,6 +58,7 @@ export function submissionInput(
     requests: '',
     privacyConsent: true,
     requestsConsent: false,
+    ageConfirmed: true,
     ...overrides,
   }
 }

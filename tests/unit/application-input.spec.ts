@@ -158,6 +158,7 @@ describe('입력란 묶음 검증 validateApplicationInput(AC-APPLY-008)', () =>
     requests: '',
     privacyConsent: true,
     requestsConsent: false,
+    ageConfirmed: true,
   }
 
   function errorsOf(overrides: Partial<ApplicationFormInput>) {
@@ -261,6 +262,13 @@ describe('입력란 묶음 검증 validateApplicationInput(AC-APPLY-008)', () =>
     expect(errorsOf({ privacyConsent: undefined })).toEqual({ privacyConsent: 'PRIVACY_CONSENT_REQUIRED' })
   })
 
+  it('만 14세 이상 확인이 없으면 AGE_CONFIRM_REQUIRED다(체크 상자 값 true만 통과)', () => {
+    expect(errorsOf({ ageConfirmed: false })).toEqual({ ageConfirmed: 'AGE_CONFIRM_REQUIRED' })
+    expect(errorsOf({ ageConfirmed: undefined })).toEqual({ ageConfirmed: 'AGE_CONFIRM_REQUIRED' })
+    expect(errorsOf({ ageConfirmed: 'on' })).toEqual({ ageConfirmed: 'AGE_CONFIRM_REQUIRED' })
+    expect(errorsOf({ ageConfirmed: true })).toEqual({})
+  })
+
   describe('회차 식별 값(1 이상 2147483647 이하의 정수)', () => {
     it.each(['abc', '0', '-1', '1.5', '2147483648', '', '99999999999', '01'])('%j는 SESSION_INVALID다', (session) => {
       expect(errorsOf({ session })).toEqual({ session: 'SESSION_INVALID' })
@@ -289,6 +297,7 @@ describe('입력란 묶음 검증 validateApplicationInput(AC-APPLY-008)', () =>
         requests: 'x',
         requestsConsent: false,
         privacyConsent: false,
+        ageConfirmed: false,
       }),
     ).toEqual({
       session: 'SESSION_INVALID',
@@ -298,6 +307,7 @@ describe('입력란 묶음 검증 validateApplicationInput(AC-APPLY-008)', () =>
       partySize: 'PARTY_SIZE_INVALID',
       requests: 'REQUESTS_CONSENT_REQUIRED',
       privacyConsent: 'PRIVACY_CONSENT_REQUIRED',
+      ageConfirmed: 'AGE_CONFIRM_REQUIRED',
     })
   })
 })

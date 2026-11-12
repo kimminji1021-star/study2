@@ -128,6 +128,8 @@ describe('신청 처리 함수와 점유 인원(실제 DB)', () => {
         [{ partySize: '11' }, { partySize: 'PARTY_SIZE_INVALID' }],
         [{ requests: '창가 자리', requestsConsent: false }, { requests: 'REQUESTS_CONSENT_REQUIRED' }],
         [{ privacyConsent: false }, { privacyConsent: 'PRIVACY_CONSENT_REQUIRED' }],
+        [{ ageConfirmed: false }, { ageConfirmed: 'AGE_CONFIRM_REQUIRED' }],
+        [{ ageConfirmed: undefined }, { ageConfirmed: 'AGE_CONFIRM_REQUIRED' }],
       ]
       for (const [overrides, fieldErrors] of cases) {
         const result = await submit(sessionId, overrides)
@@ -263,6 +265,8 @@ describe('신청 처리 함수와 점유 인원(실제 DB)', () => {
 
       expect(new Date(doc.privacyConsentAt).getTime()).toBe(now.getTime())
       expect(doc.privacyPolicyVersion).toBe(PRIVACY_POLICY_VERSION)
+      // 만 14세 이상 확인 일시도 같은 처리 시각이다(2026-11-12 출시 전 보완)
+      expect(new Date(doc.ageConfirmedAt as string).getTime()).toBe(now.getTime())
       expect(doc.requests ?? '').toBe('')
       expect(doc.requestsConsentAt ?? null).toBeNull()
       expect(doc.cancelledAt ?? null).toBeNull()

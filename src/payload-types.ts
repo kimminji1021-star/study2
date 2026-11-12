@@ -222,6 +222,7 @@ export interface Application {
   privacyConsentAt: string;
   privacyPolicyVersion: string;
   requestsConsentAt?: string | null;
+  ageConfirmedAt?: string | null;
   cancelledAt?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -414,6 +415,7 @@ export interface ApplicationsSelect<T extends boolean = true> {
   privacyConsentAt?: T;
   privacyPolicyVersion?: T;
   requestsConsentAt?: T;
+  ageConfirmedAt?: T;
   cancelledAt?: T;
   updatedAt?: T;
   createdAt?: T;
