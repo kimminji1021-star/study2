@@ -448,7 +448,7 @@ legal_review_required: true
 ```yaml
 sync_status: complete
 sync_complete_at: 2026-11-12
-sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+sync_commit_sha: fd519ff
 frontmatter_status_transitions:
   spec_md: "in-progress → implemented → completed (3-phase close, sync 커밋에 합침), updated 2026-11-12"
   spec_compact_md: "status 줄 completed로 맞춤"
