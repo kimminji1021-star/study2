@@ -1,7 +1,7 @@
 // SPEC-APPLY-001 M2 — 같은 회차 동시 제출 통합 테스트(실제 PostgreSQL 병렬, AC-APPLY-010).
 // 각 반복의 제출은 모두 시작한 뒤 Promise.all로 한꺼번에 기다린다(순차 await는 아무것도 증명하지 못함, plan.md §G).
 // 정원 판정만 시험하도록 잠금 대기 제한은 30초로 준다. 기본 5초 값은 submit-application.spec.ts와 단위 테스트가 확인한다.
-// 횟수 제한(M4)이 붙으면 제출마다 다른 접속 IP를 써야 한다 — 그때 submit()에서 한 곳만 바꾼다.
+// 횟수 제한(M4, 10분 10회)에 걸리지 않도록 submit()이 제출마다 다른 문서용 접속 IP(198.51.100.x)를 넘기고, 끝나면 그 기록을 지운다.
 import { sql } from '@payloadcms/db-postgres'
 import { getPayload, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -15,20 +15,24 @@ import {
 import { transactionDb } from '../../src/lib/transaction-db'
 import config from '../../src/payload.config'
 import {
+  cleanupAttempts,
   cleanupMarkerData,
   createTourWithSession,
   sessionSnapshot,
   submissionInput,
+  testIpPool,
 } from '../helpers/application-fixtures'
 import { newMarker } from '../helpers/catalog-fixtures'
 
 const marker = newMarker()
 const WAIT_LIMIT_MS = 30_000
 const REJECTION_CODES = ['CAPACITY_EXCEEDED', 'SESSION_CLOSED']
+const ips = testIpPool('198.51.100', 1)
 let payload: Payload
 
-function submit(sessionId: number, partySize: number, options: SubmitApplicationOptions = {}) {
+function submit(sessionId: number, partySize: number, options: Partial<SubmitApplicationOptions> = {}) {
   return submitApplication(payload, submissionInput(sessionId, marker, { partySize: String(partySize) }), {
+    clientIp: ips.next(),
     lockTimeoutMs: WAIT_LIMIT_MS,
     ...options,
   })
@@ -62,7 +66,11 @@ describe('동시 제출(실제 DB 병렬, AC-APPLY-010)', () => {
   afterAll(async () => {
     if (payload === undefined) return
     try {
+      // 정리를 모두 끝낸 뒤 단언한다(단언이 실패해도 테스트 데이터가 남지 않게)
+      const attempts = await cleanupAttempts(payload, ips.used())
       await cleanupMarkerData(payload, marker)
+      expect(attempts.before).toBeGreaterThanOrEqual(1)
+      expect(attempts.after).toBe(0)
     } finally {
       await payload.destroy()
     }

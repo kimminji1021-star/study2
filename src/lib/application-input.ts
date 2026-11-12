@@ -98,6 +98,16 @@ export type ApplicationFormInput = {
   requests?: unknown
   privacyConsent?: unknown
   requestsConsent?: unknown
+  /** 허니팟 입력란(화면에 보이지 않음). 사람은 비워 두고, 값이 있으면 봇으로 보고 거부한다(REQ-APPLY-013) */
+  website?: unknown
+}
+
+// 허니팟 입력란 이름(plan.md §B.8). 신청 화면(M5)의 숨은 입력란과 서버 액션의 FormData 해석이 같은 이름을 쓴다
+export const HONEYPOT_FIELD = 'website'
+
+/** 허니팟 입력란에 값이 있는지. 빈 문자열·없음은 비어 있는 것으로 본다(공백만 있어도 채운 것으로 본다). */
+export function isHoneypotFilled(input: Pick<ApplicationFormInput, 'website'>): boolean {
+  return input.website !== undefined && input.website !== null && input.website !== ''
 }
 
 export type ApplicationField = 'session' | 'name' | 'email' | 'phone' | 'partySize' | 'requests' | 'privacyConsent'

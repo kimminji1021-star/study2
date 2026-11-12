@@ -4,6 +4,7 @@
 import type { Payload } from 'payload'
 
 import type { ApplicationFormInput } from '../../src/lib/application-input'
+import { rateLimitKey } from '../../src/lib/rate-limit'
 import { generateReferenceCode } from '../../src/lib/reference-code'
 import { daysFromNow, tourInput } from './catalog-fixtures'
 
@@ -122,6 +123,35 @@ export async function cleanupMarkerData(payload: Payload, marker: string): Promi
     await payload.delete({ collection: 'tour-sessions', where: { tour: { in: tourIds } } })
     await payload.delete({ collection: 'tours', where: { id: { in: tourIds } } })
   }
+}
+
+/**
+ * 문서용 주소 대역(203.0.113.0/24, 198.51.100.0/24)에서 접속 IP를 차례로 내준다(acceptance.md 머리말).
+ * 제출마다 다른 IP를 쓰면 횟수 제한(10분 10회)에 걸리지 않는다. 쓴 IP 목록은 시도 기록 정리에 쓴다.
+ * 파일마다 다른 대역·시작 번호를 쓰고, 끝나면 cleanupAttempts로 자기 IP의 기록을 지운다.
+ */
+export function testIpPool(prefix: '203.0.113' | '198.51.100', start: number) {
+  let next = start
+  const used: string[] = []
+  return {
+    next(): string {
+      if (next > 254) throw new Error('Test IP range exhausted.')
+      const ip = `${prefix}.${next}`
+      next += 1
+      used.push(ip)
+      return ip
+    },
+    used: (): string[] => [...used],
+  }
+}
+
+/** 주어진 접속 IP들의 키로 신청 시도 기록을 지우고, 지우기 전·후 개수를 돌려준다(AC-APPLY-016). */
+export async function cleanupAttempts(payload: Payload, ips: string[]): Promise<{ before: number; after: number }> {
+  const where = { keyHash: { in: ips.map((ip) => rateLimitKey(ip)) } }
+  const before = (await payload.count({ collection: 'application-attempts', where })).totalDocs
+  await payload.delete({ collection: 'application-attempts', where })
+  const after = (await payload.count({ collection: 'application-attempts', where })).totalDocs
+  return { before, after }
 }
 
 /** 회차의 상태와 신청 수(트랜잭션 밖, 커밋된 값). */

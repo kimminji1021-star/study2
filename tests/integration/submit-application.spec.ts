@@ -12,22 +12,29 @@ import { transactionDb } from '../../src/lib/transaction-db'
 import config from '../../src/payload.config'
 import {
   applicationInput,
+  cleanupAttempts,
   cleanupMarkerData,
   createTourWithSession,
   sessionSnapshot,
   submissionInput,
+  testIpPool,
 } from '../helpers/application-fixtures'
 import { newMarker } from '../helpers/catalog-fixtures'
 
 const marker = newMarker()
+// 제출마다 다른 문서용 접속 IP — 이 파일의 제출 수가 횟수 제한(10분 10회)에 걸리지 않게 한다(M4)
+const ips = testIpPool('203.0.113', 100)
 let payload: Payload
 
 function submit(
   sessionId: number,
   overrides: Parameters<typeof submissionInput>[2] = {},
-  options: SubmitApplicationOptions = {},
+  options: Partial<SubmitApplicationOptions> = {},
 ) {
-  return submitApplication(payload, submissionInput(sessionId, marker, overrides), options)
+  return submitApplication(payload, submissionInput(sessionId, marker, overrides), {
+    clientIp: ips.next(),
+    ...options,
+  })
 }
 
 async function occupied(sessionId: number): Promise<number> {
@@ -52,7 +59,11 @@ describe('신청 처리 함수와 점유 인원(실제 DB)', () => {
   afterAll(async () => {
     if (payload === undefined) return
     try {
+      // 정리를 모두 끝낸 뒤 단언한다(단언이 실패해도 테스트 데이터가 남지 않게)
+      const attempts = await cleanupAttempts(payload, ips.used())
       await cleanupMarkerData(payload, marker)
+      expect(attempts.before).toBeGreaterThanOrEqual(1)
+      expect(attempts.after).toBe(0)
     } finally {
       await payload.destroy()
     }
@@ -127,7 +138,9 @@ describe('신청 처리 함수와 점유 인원(실제 DB)', () => {
     })
 
     it('범위를 넘는 회차 식별 값은 DB를 조회하지 않고 SESSION_INVALID다', async () => {
-      const result = await submitApplication(payload, submissionInput(0, marker, { session: '99999999999' }))
+      const result = await submitApplication(payload, submissionInput(0, marker, { session: '99999999999' }), {
+        clientIp: ips.next(),
+      })
       expect(result).toEqual({
         status: 'error',
         code: 'VALIDATION_FAILED',
@@ -180,7 +193,7 @@ describe('신청 처리 함수와 점유 인원(실제 DB)', () => {
     })
 
     it('존재하지 않는 회차 ID는 SESSION_NOT_FOUND다', async () => {
-      const result = await submitApplication(payload, submissionInput(2147483000, marker))
+      const result = await submitApplication(payload, submissionInput(2147483000, marker), { clientIp: ips.next() })
       expect(result).toEqual({ status: 'error', code: 'SESSION_NOT_FOUND' })
       const strays = await payload.count({ collection: 'applications', where: { session: { equals: 2147483000 } } })
       expect(strays.totalDocs).toBe(0)

@@ -197,6 +197,63 @@ AssertionError: expected 0 to be greater than or equal to 1                     
 - `catalog.ts`·`session-availability.ts`의 신청 SPEC 확장 `@MX:NOTE`를 "확장 완료"로 갱신했다. `SessionList`의 `@MX:NOTE`는 화면을 바꾸는 M5에서 갱신한다.
 - 화면 컴포넌트는 바꾸지 않았다. 목록·상세는 이미 조회 계층의 `availability`만 그리므로 남은 자리 표시가 자동으로 점유 인원을 반영한다(화면 확인은 M5 E2E AC-APPLY-006).
 
+### M4 — 스팸 방지
+
+기준 HEAD `d6f6ae6`(M3 커밋). 같은 worktree, 긴 출력은 `.moai/state/verify/apply001-m4/`(git 제외).
+
+**RED 1** (구현 전, `pnpm exec vitest run --coverage.enabled=false tests/unit/rate-limit.spec.ts tests/integration/rate-limit.spec.ts tests/integration/submit-application.spec.ts tests/integration/application-concurrency.spec.ts`, 종료 코드 1, `red.log`):
+
+```text
+ FAIL  |unit| tests/unit/rate-limit.spec.ts [ tests/unit/rate-limit.spec.ts ]
+Error: Cannot find module '../../src/lib/rate-limit' imported from …/tests/unit/rate-limit.spec.ts
+ FAIL  |integration| tests/integration/application-concurrency.spec.ts [ … ]
+Error: Cannot find module '../../src/lib/rate-limit' imported from …/tests/helpers/application-fixtures.ts
+ FAIL  |integration| tests/integration/rate-limit.spec.ts [ … ]
+ FAIL  |integration| tests/integration/submit-application.spec.ts [ … ]
+ Test Files  4 failed (4)
+      Tests  no tests
+```
+
+**RED 2 — 동작 실패** (`src/lib/rate-limit.ts`의 순수 함수·기록 함수만 만들고 신청 처리 함수에 연결하기 전, 단위·통합 `rate-limit.spec.ts`, 종료 코드 1, `red2.log`): 단위 통과, 통합 실패 —
+
+```text
+ FAIL  |integration| tests/integration/rate-limit.spec.ts > 허니팟과 횟수 제한(실제 DB, AC-APPLY-013) > 허니팟·10회 제한·IP 분리·키 해시 저장·시간 경과·오래된 기록 정리
+AssertionError: expected { status: 'success', …(1) } to deeply equal { status: 'error', …(1) }
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 17 passed (18)
+```
+
+이 실행에서 테스트의 `afterAll`이 정리 전에 단언하는 순서 결함이 드러났다(단언 실패 → 표식 투어 1개가 남음). 정리 후 단언하도록 세 파일의 `afterAll`을 고치고, 임시 스크립트(`payload run .moai/state/verify/apply001-m4/residue.ts clean-rate-limit`)로 그 투어·회차·신청만 지웠다: `{"cleanedRateLimitTours":1}` → `{"testTours":0,"applications":0,"attempts":0,"testUsers":0}`.
+
+**GREEN** (신청 처리 함수 앞단 연결 후, 단위 3개 + 통합 3개, 종료 코드 0, `green.log`): `Test Files 6 passed (6)` / `Tests 148 passed (148)`.
+
+**M4 종료 시 전체 검증** (작업 트리 = M4 변경 전부, 커밋 직전):
+
+| 명령 | 종료 코드 | 결과 | M3 대비 |
+|---|---|---|---|
+| `pnpm typecheck` | 0 | 출력 없음 | 같음 |
+| `pnpm lint` | 0 | 출력 없음 | 같음 |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | 같음 |
+| `pnpm test` | 0 | `Test Files 28 passed (28)` / `Tests 486 passed (486)` / `Lines : 98.91% ( 365/369 )` | +2 파일, +19건, 실패 0 |
+| `pnpm e2e` | 0 | `26 passed (31.6s)` | 같음(26) |
+| `git diff --stat 0cdea2f -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml` | 0 | 출력 없음 | — |
+
+테스트 데이터 잔여 확인(전체 실행 뒤, `payload run`으로 개수만 조회): `{"testTours":0,"applications":0,"attempts":0,"testUsers":0}`.
+
+| AC | 상태 | 검증 | 실제 결과 |
+|---|---|---|---|
+| AC-APPLY-013 | PASS | 통합 `tests/integration/rate-limit.spec.ts`(정원 100, 고정 `now`): `203.0.113.12` + 허니팟 `x` → `SUBMISSION_REJECTED`·신청 0 / `203.0.113.10` 10건 성공, 11번째 `RATE_LIMITED`·신청 10 / `203.0.113.11` 성공 / 새 시도 기록 1·11·1건, 키 모두 `^[0-9a-f]{64}$`, `.10` 키 11건 동일·`.11`·`.12`와 다름, 시도 시각 = `now` / `.10` 키 = `HMAC-SHA256(process.env.PAYLOAD_SECRET, 'apply-rate-limit:203.0.113.10')`, 키 없는 `SHA-256('203.0.113.10')`과 다름(비밀 값 미출력) / 시도 기록 전체 `JSON.stringify`에 키가 있고 세 IP 문자열이 없음 / `now + 10분 + 1초` 제출 성공, 직전 1건 이상이던 10분 초과 기록이 0건. 단위 `tests/unit/rate-limit.spec.ts`: `198.51.100.7, 10.0.0.1` → `198.51.100.7`, `x-real-ip: 198.51.100.8` → `198.51.100.8`, 둘 다 없음 → `unknown`(+ 공백·빈 첫 값), 키 유도·비밀 값 없음 예외, 허니팟 판정 | `pnpm test` 486/486 |
+| AC-APPLY-016 (시도 기록 정리 부분) | PASS | `rate-limit`·`submit-application`·`application-concurrency` 통합 파일의 `afterAll`이 자기가 쓴 IP들의 키로 시도 기록을 지우고 "지우기 전 ≥ 1, 지운 뒤 0"을 단언(정리를 끝낸 뒤 단언) | `pnpm test` 486/486, 잔여 `attempts: 0` |
+| AC-APPLY-010 (회귀) | PASS | 동시성 테스트가 `submit()` 한 곳에서 제출마다 다른 `198.51.100.x`를 넘김(66개), 시나리오 A·B·잠금 증거·300ms 제한 모두 그대로 통과 | `pnpm test` 486/486 |
+
+결정 메모:
+
+- `src/lib/rate-limit.ts`: `clientIpFromHeaders`(서버 액션 M5용 순수 함수), `rateLimitKey(ip, secret = process.env.PAYLOAD_SECRET)`(비밀 값이 없으면 예외 — 키 없는 해시로 떨어지지 않음), `recordAttempt(payload, ip, now)`(오래된 행 삭제 → 기록 → 최근 10분 `[now − 10분, now]` 같은 키 수 ≤ 10). 기록·세기는 Payload 로컬 API(`overrideAccess` 기본값)로 한다. `@MX:DEBT`(+`@MX:CEILING`·`@MX:UPGRADE`)를 붙였다.
+- 허니팟 입력란 이름 `HONEYPOT_FIELD = 'website'`와 판정 `isHoneypotFilled`는 `application-input.ts`에 두었다(서버 액션의 FormData 해석이 같은 이름을 쓴다). 빈 문자열·없음만 비어 있는 것으로 본다.
+- `submitApplication(payload, input, { clientIp, now, lockTimeoutMs, beforeCommit })` — `clientIp`는 필수다(빠뜨리면 모든 제출이 한 키로 묶이므로 타입으로 막는다). 순서는 plan.md §B.5대로 시도 기록 → `RATE_LIMITED` → 허니팟 `SUBMISSION_REJECTED` → 입력 검증 → 정원 확인 구간. 시도 기록 단계의 DB 오류는 `INTERNAL_ERROR`(로그는 코드·오류 종류 이름·`sessionId: null`만) — 단위 테스트가 가짜 payload로 확인.
+- 테스트 IP: `tests/helpers/application-fixtures.ts`의 `testIpPool(prefix, start)`가 파일마다 다른 대역·시작 번호를 내준다(동시성 `198.51.100.1~`, 신청 처리 `203.0.113.100~`, 횟수 제한 고정 `203.0.113.10~12`). E2E(M5)는 `198.51.100.x`를 쓸 예정이며, 통합 테스트가 끝나면 그 키의 기록은 남지 않는다.
+- 남은 범위: 서버 액션의 `x-forwarded-for` 추출·`website` FormData 해석·화면의 허니팟 배치(M5), 로그 비노출 전체 점검(M6 AC-APPLY-015).
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

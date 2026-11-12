@@ -1,12 +1,18 @@
-// 신청 처리 — SPEC-APPLY-001 REQ-APPLY-008~011·014·015, plan.md §B.1·§B.3.
+// 신청 처리 — SPEC-APPLY-001 REQ-APPLY-008~011·013~015, plan.md §B.1·§B.3·§B.5.
 // 서버 제출 경로의 핵심 로직. 서버 액션(M5)은 FormData 해석·접속 IP 추출·redirect만 맡고 이 함수를 부른다.
 // 통합 테스트는 Next 없이 이 함수를 실제 DB로 직접 호출한다.
 import { sql } from '@payloadcms/db-postgres'
 import { createLocalReq, type Payload, type PayloadRequest } from 'payload'
 
-import { validateApplicationInput, type ApplicationFormInput, type FieldErrors } from './application-input'
+import {
+  isHoneypotFilled,
+  validateApplicationInput,
+  type ApplicationFormInput,
+  type FieldErrors,
+} from './application-input'
 import { PRIVACY_POLICY_VERSION } from './consent'
 import { getOccupiedSeatsInTransaction } from './occupancy'
+import { recordAttempt } from './rate-limit'
 import { generateReferenceCode } from './reference-code'
 import { getSessionAvailability, type SessionStatus, type UnavailableReason } from './session-availability'
 import { transactionDb } from './transaction-db'
@@ -18,7 +24,8 @@ export const DEFAULT_LOCK_TIMEOUT_MS = 5000
 const LOCK_NOT_AVAILABLE = '55P03'
 
 export type CapacityErrorCode = 'SESSION_NOT_FOUND' | 'SESSION_CLOSED' | 'SESSION_STARTED' | 'CAPACITY_EXCEEDED'
-export type SubmitErrorCode = 'VALIDATION_FAILED' | CapacityErrorCode | 'SESSION_BUSY' | 'INTERNAL_ERROR'
+export type SubmitErrorCode =
+  'RATE_LIMITED' | 'SUBMISSION_REJECTED' | 'VALIDATION_FAILED' | CapacityErrorCode | 'SESSION_BUSY' | 'INTERNAL_ERROR'
 
 export type SubmitApplicationResult =
   | { status: 'success'; referenceCode: string }
@@ -26,7 +33,9 @@ export type SubmitApplicationResult =
   | { status: 'error'; code: Exclude<SubmitErrorCode, 'VALIDATION_FAILED'> }
 
 export type SubmitApplicationOptions = {
-  /** 처리 시각. 시작 여부 판단과 동의 일시에 쓴다. 기본값은 호출 시점의 현재 시각 */
+  /** 접속 IP(서버 액션이 x-forwarded-for 첫 값 등에서 뽑는다). 횟수 제한 키를 만드는 데만 쓰고 저장하지 않는다 */
+  clientIp: string
+  /** 처리 시각. 시작 여부 판단, 동의 일시, 신청 시도 기록 시각에 쓴다. 기본값은 호출 시점의 현재 시각 */
   now?: Date
   /** 회차 행 잠금 대기 제한(밀리초). 기본 DEFAULT_LOCK_TIMEOUT_MS */
   lockTimeoutMs?: number
@@ -95,7 +104,7 @@ async function lockAndCheck(
 }
 
 /** 잡은 오류는 코드·오류 종류 이름·회차 ID만 기록한다. 메시지 원문은 바인딩 인자(개인정보)를 담을 수 있다(REQ-APPLY-015). */
-function logFailure(payload: Payload, code: SubmitErrorCode, err: unknown, sessionId: number): void {
+function logFailure(payload: Payload, code: SubmitErrorCode, err: unknown, sessionId: number | null): void {
   const errorName = err instanceof Error ? err.constructor.name : typeof err
   payload.logger.error({ code, errorName, sessionId, msg: `Application submission failed: ${code}` })
 }
@@ -108,13 +117,27 @@ function logFailure(payload: Payload, code: SubmitErrorCode, err: unknown, sessi
 export async function submitApplication(
   payload: Payload,
   input: ApplicationFormInput,
-  options: SubmitApplicationOptions = {},
+  options: SubmitApplicationOptions,
 ): Promise<SubmitApplicationResult> {
+  const now = options.now ?? new Date()
+  const lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS
+
+  // 순서(plan.md §B.5): 횟수 제한(시도 기록) → 허니팟 → 입력 검증 → 정원 확인 구간.
+  // 시도 기록은 정원 확인 트랜잭션 밖에서 하므로 신청이 거절되어도 남는다
+  let allowed: boolean
+  try {
+    allowed = await recordAttempt(payload, options.clientIp, now)
+  } catch (err) {
+    logFailure(payload, 'INTERNAL_ERROR', err, null)
+    return { status: 'error', code: 'INTERNAL_ERROR' }
+  }
+  if (!allowed) return { status: 'error', code: 'RATE_LIMITED' }
+  // 이유를 드러내지 않는 일반 거부(REQ-APPLY-013)
+  if (isHoneypotFilled(input)) return { status: 'error', code: 'SUBMISSION_REJECTED' }
+
   const validation = validateApplicationInput(input)
   if (!validation.ok) return { status: 'error', code: 'VALIDATION_FAILED', fieldErrors: validation.fieldErrors }
   const values = validation.value
-  const now = options.now ?? new Date()
-  const lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS
 
   let transactionID: Awaited<ReturnType<Payload['db']['beginTransaction']>>
   try {
