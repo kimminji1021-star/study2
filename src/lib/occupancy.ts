@@ -34,7 +34,8 @@ async function sumBySession(db: SqlExecutor, sessionIds: readonly number[]): Pro
   return seats
 }
 
-// @MX:ANCHOR: [AUTO] 점유 인원 정의의 단일 지점(화면용) — 목록·상세 조회(M3), 신청 화면(M5)이 남은 자리 계산에 쓴다
+// @MX:ANCHOR: [AUTO] 점유 인원 정의의 단일 지점 — 화면용인 이 함수(목록·상세·신청 화면이 catalog.ts toSessions로 호출)와
+//   정원 확인 구간용 getOccupiedSeatsInTransaction(submit-application.ts)이 같은 sumBySession·OCCUPYING_STATUSES를 쓴다
 // @MX:REASON: REQ-APPLY-005가 정의를 한 곳에 못박는다. 화면과 신청 처리가 다르게 세면 "남은 자리"와 실제 접수가 어긋난다
 // @MX:NOTE: [AUTO] 신청 문서를 돌려주지 않고 합계 숫자만 읽으므로, 문서 조회는 익명 권한(ANONYMOUS_READ)이라는
 //   조회 계층 원칙의 예외로 둔다(plan.md §B.2). 이 함수로 신청 내용을 읽는 코드를 만들지 않는다

@@ -319,9 +319,129 @@ RED 실행의 잔여 데이터: 실패마다 Playwright가 작업자를 다시 �
 - 브라우저 쪽 검사: 이름·이메일·연락처·필수 동의에 `required`를 두었다. 서버 검증이 기준이며 브라우저 검사와 관계없이 다시 검증한다(REQ-APPLY-008).
 - 남은 범위(M6): 로그 포착 통합 검사(AC-APPLY-015 전체), 품질 게이트 정리, `progress.md` §E.3. 관리자 화면 읽기 전용 수동 확인(AC-APPLY-003)은 사람이 해야 한다.
 
+### M6 — 개인정보 비노출 점검, 회귀 정리, 품질 게이트
+
+기준 HEAD `14629dc`(main, M5 병합). 실행 위치는 격리 worktree(`.claude/worktrees/agent-a75adc15f663b8977`), PostgreSQL 컨테이너는 본 checkout과 공유. 긴 출력은 `.moai/state/verify/apply001-m6/`(git 제외 — `git check-ignore -v` = `.gitignore:203:.moai/state/`). 시작 시 `git merge --ff-only 14629dc` 후 `git log --oneline -1` = `14629dc feat(SPEC-APPLY-001): M5 신청 화면과 접수 완료`, `node_modules`가 없어 `pnpm install --frozen-lockfile` 종료 코드 0, `docker compose ps` = `postgres healthy`, E2E 포트 3100 비어 있음(사용자의 3000번 개발 서버는 건드리지 않음).
+
+**새 테스트** `tests/integration/pii-logging.spec.ts`(AC-APPLY-015 로그 포착 통합 검사): 표식 값(이름 `<표식>-이름`, 이메일 `<표식>@example.test`, 연락처 `010-77<무작위 6자리>`, 요청 사항 `<표식>-요청` + 선택 동의)으로 정원 3 회차에 ① 성공(인원 1) ② 검증 실패(필수 동의 없음) ③ 자리 부족(인원 3) ④ 커밋 직전 주입 지점 강제 오류 — 오류 메시지와 `cause`에 네 표식 값을 DB 오류처럼 담음 ⑤ 같은 키의 시도를 10회로 채운 뒤 제출 → `RATE_LIMITED`를 차례로 하면서 `console`의 `log`·`info`·`warn`·`error`와 `payload.logger`의 `info`·`warn`·`error`·`debug`를 붙잡는다(오류 객체는 `util.inspect`로 메시지·스택·`cause`까지 펼쳐 검사). 단언: 다섯 결과가 기대대로(저장 1건), 붙잡은 출력 ≥ 1건이고 그중 하나에 `INTERNAL_ERROR`, 붙잡은 출력 전체에 표식 값 5종(연락처 원문·숫자만 형태 포함) 없음, 실패 결과 4건의 JSON·결과 코드 안내 문구·입력란 안내 문구에 표식 값 없음. 접속 IP는 이 파일 전용 `203.0.113.250`, `afterAll`이 정리 후 "지우기 전 ≥ 1, 지운 뒤 0"을 단언한다.
+
+**RED 해당 여부**: 검사 대상 코드(로그를 코드·오류 종류 이름·회차 ID로만 남기는 `logFailure`)는 M2에서 이미 구현되어, 새 테스트는 첫 실행에서 통과했다(`first.log`, 종료 코드 0, `Tests 4 passed (4)`). 구현보다 테스트가 늦은 특성 검사이므로, 테스트가 누출을 실제로 잡는지 아래 변이로 보였다.
+
+**변이 확인 (로그 누출)**: `src/lib/submit-application.ts`의 `logFailure`가 잡은 오류 객체를 로그에 함께 넘기도록(`{ code, errorName, sessionId, err, msg }`) 바꾼 코드로 같은 파일 실행 → 종료 코드 1, `Tests 1 failed | 3 passed (4)`(`mutation-log-err.log`):
+
+```text
+ × … > 붙잡은 출력 전체에 네 표식 값(연락처는 정규화 형태 포함)이 하나도 없다
+AssertionError: expected '{\n  code: \'INTERNAL_ERROR\',\n  err…' not to contain 'test-9fa786f3-이름'
+```
+
+원래 코드로 되돌린 뒤 같은 명령: 종료 코드 0, `Tests 4 passed (4)`(`mutation-restored.log`), `git status --short`에 `submit-application.ts` 없음.
+
+**변이 확인 (잠금 제거, plan.md §E-1 7번 — 최종 트리에서 다시)**: 잠금 문장의 `FOR UPDATE`만 지우고 `pnpm exec vitest run --coverage.enabled=false tests/integration/application-concurrency.spec.ts` → 종료 코드 1, `Tests 7 failed | 1 passed (8)`(`mutation-lock.log`). 실패 단언: `expected [ 'SUCCESS', … ] to have a length of 5 but got 9`·`… but got 8`(시나리오 A), `expected 23 to be less than or equal to 10`(시나리오 B, 정원 초과 저장), `expected 0 to be greater than or equal to 1`(잠금 대기 세션 0개). 되돌린 뒤: 종료 코드 0, `Tests 8 passed (8)`(`mutation-lock-restored.log`). 통과한 1건은 M2 기록과 같은 300ms 잠금 대기 제한 사례다.
+
+**MX 태그 정리** (`code_comments: ko`):
+
+| 파일 | 태그 | 변경 |
+|---|---|---|
+| `src/lib/occupancy.ts` | `@MX:ANCHOR` + `@MX:REASON` | 갱신 — "(화면용)" 한정 설명을 실제 호출 구조로 고침: 화면용 함수(목록·상세·신청 화면이 `catalog.ts` `toSessions`로 호출)와 정원 확인 구간용 `getOccupiedSeatsInTransaction`(`submit-application.ts`)이 같은 `sumBySession`·`OCCUPYING_STATUSES`를 쓴다 |
+| `src/lib/session-availability.ts` | `@MX:ANCHOR` + `@MX:REASON` | 갱신 — 호출자 목록에 신청 화면과 신청 처리의 정원 판단(`submit-application.ts`)을 더함(M2 이후 실제 호출자) |
+| `src/lib/submit-application.ts` | `@MX:WARN` + `@MX:REASON`, `@MX:ANCHOR` + `@MX:REASON` | 확인 — 트랜잭션·잠금 구간의 같은 `req`/연결 사용 필수, 신청을 만드는 유일한 경로. 변경 없음 |
+| `src/lib/rate-limit.ts` | `@MX:DEBT` + `@MX:CEILING` + `@MX:UPGRADE` | 확인 — 상한 "트래픽 적은 단일 리전", 갱신 조건 "배포 SPEC 예약 정리, 남용 관측 시 원자적 카운터". 변경 없음 |
+| `src/lib/catalog.ts`, `src/components/SessionList.tsx`, `src/lib/session-availability.ts` | 신청 SPEC 확장 `@MX:NOTE` | 확인 — M3·M5에서 "확장 완료"로 갱신됨. 변경 없음 |
+| `src/lib/consent.ts` | `@MX:NOTE` "출시 전 전문가 확인 필요" | 확인 — 남아 있음 |
+
+`src/` 전체에 `@MX:TODO` 0건(`grep -rn '@MX' src`). 파일당 한도(ANCHOR 3·WARN 5·NOTE 10) 안이다.
+
+**회귀 정리**: `src/`에서 제외 범위(상태 변경·이메일·캡차·다국어) 흔적 검색(`sendEmail|nodemailer|captcha|turnstile|status: 'confirmed'|status: 'cancelled'|locale`) → `catalog-order.ts`의 `localeCompare` 1건뿐(정렬, 무관). 제출 경로의 로그 호출은 `submit-application.ts`의 `payload.logger.error` 1곳뿐(`grep -rn 'logger\|console\.' src`). 기능 코드 변경 없음 — M6의 소스 변경은 MX 주석 2곳이다.
+
+**M6 종료 시 전체 검증** (plan.md §E — E-1 순차, 그 뒤 E-2; 작업 트리 = M6 변경 전부, 커밋 직전):
+
+| 단계 | 명령 | 종료 코드 | 결과 | M5 대비 |
+|---|---|---|---|---|
+| E-1 1 | `docker compose ps --format '{{.Service}} {{.Health}}'` | 0 | `postgres healthy` | — |
+| E-1 2 | `pnpm generate:types` / `pnpm generate:importmap` | 0 / 0 | `git status --short`에 `src/payload-types.ts`·import map 없음 / `No new imports found, skipping writing import map` | 같음 |
+| E-1 3 | `pnpm typecheck` | 0 | 출력 없음(`$ tsc --noEmit`만) | 같음 |
+| E-1 4 | `pnpm build` | 0 | `✓ Compiled successfully in 10.1s`, `ƒ /apply`, `ƒ /apply/complete/[ref]` | 같음 |
+| E-1 5 | `pnpm test` | 0 | `Test Files 31 passed (31)` / `Tests 517 passed (517)` / `Lines : 98.98% ( 391/395 )` | +1 파일, +4건(513 → 517), 실패 0 |
+| E-1 6 | `pnpm e2e` | 0 | `40 passed (52.8s)` | 같음(40) |
+| E-1 7 | 잠금 제거 변이 | 1 → 0 | 위 기록 | — |
+| E-2 | `pnpm lint` | 0 | 출력 없음 | 같음 |
+| E-2 | `pnpm format:check` | 0 | `All matched files use Prettier code style!` | 같음 |
+| E-2 | `git diff --stat 0cdea2f -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml` | 0 | 출력 없음(§D 불변 파일 그대로) | — |
+| E-2 | `git status --short` | 0 | `M src/lib/occupancy.ts`, `M src/lib/session-availability.ts`, `?? tests/integration/pii-logging.spec.ts`(+ 이 문서) | — |
+
+`pnpm test` 출력의 `ERROR` 줄은 기존 테스트가 의도한 로그다: `Application submission failed: INTERNAL_ERROR`·`SESSION_BUSY`(코드만), 미디어 업로드 거부 2건(SPEC-TOUR-001). 표식 값은 새 테스트가 붙잡아 검사한다.
+
+테스트 데이터 잔여 확인(위 전체 실행과 변이 실행 뒤, `payload run .moai/state/verify/apply001-m6/residue.ts`로 개수만 조회 — `tours` slug `test-` 포함, `applications` 이메일 `example.test` 포함, `users` 이메일 `@example.test` 포함, 시도 기록은 문서용 두 대역 512개 IP의 키): `{"testTours":0,"applications":0,"testUsers":0,"testIpAttempts":0}`.
+
+| AC | 상태 | 검증 | 실제 결과 |
+|---|---|---|---|
+| AC-APPLY-015 | PASS | 통합 `tests/integration/pii-logging.spec.ts`(위) + E2E URL 부분(M5 `apply.spec.ts`) | `pnpm test` 517/517, `pnpm e2e` 40/40 + 로그 누출 변이 실패 확인 |
+| AC-APPLY-016 | PASS | `pnpm test` 0 → `pnpm e2e` 0 순서, `src/lib/` 라인 98.98% ≥ 85%(임계값 내장), 잔여 0, 시도 기록 정리 단언(통합 4개 파일·E2E) | 위 표 |
+
+결정 메모:
+
+- AC-APPLY-016의 `docker compose exec … psql` 형식 대신 Payload 로컬 API로 같은 조건의 개수를 셌다. 이 실행 환경의 작업 트리 격리 검사가 셸 변수로 사용자 이름을 넘기는 `psql` 호출을 허용하지 않았고, `.env` 값을 출력하지 않기 위해 값 대입도 하지 않았다. Payload `like`는 "포함" 조건이라 원래 명령(`LIKE 'test-%'`, 접두어)보다 넓다 — 0이면 원래 조건도 0이다.
+- 법률 문구(동의 고지)는 초안이다. **출시 전 전문가 확인 필요**(`consent.ts` `@MX:NOTE`, 버전 `2026-11-10.8deb2c9f` 그대로).
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<pending run-phase>_
+### 수용 기준 최종 표 (AC-APPLY-001 ~ 016)
+
+| AC | 상태 | 근거(마일스톤·테스트) | 실제 결과(최종 트리) |
+|---|---|---|---|
+| AC-APPLY-001 등록 컬렉션 | PASS | M1 `users-auth.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-002 필드 검증·이메일 일관성 | PASS | M1·M2 `application-collections.spec.ts`, `tests/unit/application-input.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-003 권한 — 로컬 API | PASS | M1 `application-access.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-003 권한 — REST·GraphQL | PASS | M5 `tests/e2e/application-api.spec.ts` | `pnpm e2e` 40/40 |
+| AC-APPLY-003 권한 — 관리자 화면(수동) | **PENDING — 사람 확인 필요** | 관리자 화면에서 신청 목록·상세가 열리고 입력란 편집 불가, "새로 만들기"·저장 버튼 없음, 메뉴에 신청 시도 기록 없음 | **미실시.** run 에이전트는 브라우저로 확인할 수 없다. 사람이 `pnpm dev` 후 확인해 이 행을 갱신해야 한다 |
+| AC-APPLY-004 회차 삭제 거부 | PASS | M1 `application-collections.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-005 점유 인원·질의 수 | PASS | M2 `submit-application.spec.ts`(정의), M3 `catalog-occupancy.spec.ts`(조회 계층·질의 수) + N+1 변이 | `pnpm test` 517/517 |
+| AC-APPLY-006 목록·상세 남은 자리·"신청하기" | PASS | M5 `tests/e2e/apply.spec.ts` | `pnpm e2e` 40/40 |
+| AC-APPLY-007 신청 화면·404·신청 불가 안내 | PASS | M5 `apply.spec.ts` + `apply-pages.spec.ts` | `pnpm e2e` 40/40, `pnpm test` 517/517 |
+| AC-APPLY-008 입력 검증 | PASS | M2 단위·통합, M5 화면 | `pnpm test` 517/517, `pnpm e2e` 40/40 |
+| AC-APPLY-009 순차 정원·자동 마감·롤백 | PASS | M2 `submit-application.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-010 동시 제출 | PASS | M2 `application-concurrency.spec.ts` + 잠금 제거 변이(M2 3회, M6 최종 트리 1회 — 수동 기록) | `pnpm test` 517/517, 변이 시 7건 실패 |
+| AC-APPLY-011 접수 번호 | PASS | M2 단위·저장소 규칙, M5 E2E(URL·DB ID 없음) | `pnpm test` 517/517, `pnpm e2e` 40/40 |
+| AC-APPLY-012 접수 완료·303·404·재제출 없음 | PASS | M5 `apply.spec.ts` + 저장소 규칙 | `pnpm e2e` 40/40 |
+| AC-APPLY-013 허니팟·횟수 제한 | PASS | M4 단위·통합 `rate-limit.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-014 동의 기록·문구 버전 | PASS | M2 통합·단위 `consent.spec.ts` | `pnpm test` 517/517 |
+| AC-APPLY-015 개인정보 비노출 | PASS | M6 `pii-logging.spec.ts` + 로그 누출 변이, M5 E2E URL | `pnpm test` 517/517, `pnpm e2e` 40/40 |
+| AC-APPLY-016 테스트·커버리지·정리 | PASS | M6 전체 게이트, 잔여 0 | 라인 98.98%, 잔여 0 |
+
+### 배포 SPEC으로 넘길 확인 목록 (plan.md §B.5에서 옮김)
+
+1. 운영에서 `x-forwarded-for`가 실제 클라이언트 IP 하나인지(Vercel 문서 plan.md §A.2)
+2. Supabase 풀러(트랜잭션 모드)에서 `set_config(…, true)`·`FOR UPDATE`가 같은 트랜잭션 안에서 동작하는지
+3. 오래된 신청 시도 기록의 예약 정리(Vercel Cron 등 — `rate-limit.ts` `@MX:DEBT`의 `@MX:UPGRADE`)
+4. 서버리스 인스턴스 수와 연결 풀 크기
+
+### 남은 항목
+
+- AC-APPLY-003 관리자 화면 수동 확인 — **PENDING, 사람이 해야 함**
+- 동의 고지·보유 기간 문구 — **출시 전 전문가 확인 필요**(`legal_review_required: true`)
+- 잔여 위험 R20(COMMIT 실패가 예외 없이 끝날 수 있음)과 R4(`beginTransaction` 실패·`null` 분기 — 실제 DB로 재현 불가, 코드 검토 항목, 미실행 줄 `submit-application.ts` 4줄)는 plan.md §G 그대로 남는다
+
+```yaml
+run_complete_at: 2026-11-12
+run_commit_sha: <M6 커밋 — 이 문서를 담은 커밋 자체라 sync 단계에서 백필>
+run_status: complete-with-pending-manual-check
+ac_pass_count: 16          # AC-APPLY-003은 자동화 부분(로컬 API·REST·GraphQL) PASS, 관리자 화면 수동 확인만 PENDING
+ac_fail_count: 0
+ac_pending_manual: [AC-APPLY-003-admin-ui]
+preserve_list_post_run_count: 0
+l44_pre_commit_fetch: not-run   # 지시에 따라 push 없음, 원격 조회 생략
+l44_post_push_fetch: not-applicable
+new_warnings_or_lints_introduced: 0
+cross_platform_build:
+  windows_powershell: pass   # pnpm build 종료 코드 0(Windows 11, Git Bash에서 실행)
+  other: not-run
+tests: { vitest_files: 31, vitest_tests: 517, e2e: 40 }
+coverage_src_lib_lines: "98.98% (391/395)"
+leftover_test_data: { testTours: 0, applications: 0, testUsers: 0, testIpAttempts: 0 }
+total_run_phase_files: 4   # M6: occupancy.ts, session-availability.ts, tests/integration/pii-logging.spec.ts, progress.md
+m1_to_mN_commit_strategy: milestone-per-commit (M1~M6, 6 commits)
+legal_review_required: true
+```
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
