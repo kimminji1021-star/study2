@@ -779,6 +779,30 @@ describe('AC-TOUR-016 시드 명령과 자동 실행 금지', () => {
   })
 })
 
+// SPEC-APPLY-001 AC-APPLY-012 — 신청 화면·접수 완료 화면은 요청 시점에 렌더링하고(plan.md §B.8),
+// apply/ 아래에 loading 파일을 두지 않는다(notFound()가 스트리밍 시작 뒤에 호출되면 404가 아니라 200이 된다, R21과 같은 이유).
+const APPLY_DIR = `${FRONTEND_DIR}apply`
+const APPLY_PAGES = ['src/app/(frontend)/apply/page.tsx', 'src/app/(frontend)/apply/complete/[ref]/page.tsx'] as const
+
+describe('AC-APPLY-012 신청 화면 경로 규칙', () => {
+  it('src/app/(frontend)/apply/ 아래에는 loading 파일이 없다', () => {
+    const files = listFiles(APPLY_DIR)
+    expect(
+      files.filter((file) => PAGE_FILE.test(path.posix.basename(file))).length,
+      'apply/ 아래에 페이지 파일이 1개 이상 있어야 한다',
+    ).toBeGreaterThanOrEqual(1)
+
+    expect(files.filter((file) => /^loading\.(tsx|ts|jsx|js)$/.test(path.posix.basename(file)))).toEqual([])
+  })
+
+  it.each(APPLY_PAGES)('%s는 next/server의 connection을 import하고 await로 호출한다', (file) => {
+    const source = readRepoFile(file)
+
+    expect(source).toMatch(CONNECTION_IMPORT)
+    expect(source).toMatch(CONNECTION_CALL)
+  })
+})
+
 // SPEC-APPLY-001 AC-APPLY-011 — 접수 번호는 암호학적 난수로 만든다(plan.md §B.4). Math.random은 추측할 수 있다.
 const REFERENCE_CODE_MODULE = 'src/lib/reference-code.ts'
 

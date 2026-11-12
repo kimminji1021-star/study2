@@ -1,6 +1,6 @@
 // SPEC-TOUR-001 M4 E2E 준비·정리 — 카탈로그 화면 E2E가 쓰는 테스트 데이터를 Payload 로컬 API로 만들고 지운다.
 // - 각 E2E 파일은 준비 단계에서 자기 표식(test-<무작위 값>)으로 데이터를 만들고, 정리 단계에서 그 표식으로 지운다(plan.md M4·R8·R15).
-// - 정리는 회차 → 투어 → 미디어 순서이며, 한 단계가 실패해도 나머지를 계속하고 마지막에 첫 실패를 다시 던진다.
+// - 정리는 신청 → 회차 → 투어 → 미디어 순서이며(신청 단계는 SPEC-APPLY-001 M5), 한 단계가 실패해도 나머지를 계속하고 마지막에 첫 실패를 다시 던진다.
 // - 회차는 실행 시각에서 하루 이상 떨어진 값만 쓴다(R16).
 import { getPayload, type Payload } from 'payload'
 
@@ -93,7 +93,7 @@ export async function createCatalogFixture(payload: Payload): Promise<CatalogFix
   }
 }
 
-/** 표식이 붙은 회차 → 투어 → 미디어를 지운다. 준비가 중간에 실패해 일부만 만들어진 경우에도 쓸 수 있다. */
+/** 표식이 붙은 투어의 신청 → 회차 → 투어 → 미디어를 지운다. 준비가 중간에 실패해 일부만 만들어진 경우에도 쓸 수 있다. */
 export async function cleanupCatalogFixture(payload: Payload, marker: string): Promise<void> {
   const failures: unknown[] = []
   // 조건(where)으로 지우는 로컬 API는 일부 문서 실패를 예외 대신 errors 배열로 돌려주므로 둘 다 실패로 본다
@@ -115,6 +115,19 @@ export async function cleanupCatalogFixture(payload: Payload, marker: string): P
   const tourIds = tours.docs.map((tour) => tour.id)
 
   if (tourIds.length > 0) {
+    // SPEC-APPLY-001: 신청이 있는 회차는 삭제가 거부되므로(REQ-APPLY-004) 그 투어들의 회차에 속한 신청을 먼저 지운다.
+    // 신청 삭제는 접근 규칙이 막으므로 로컬 API 기본값(overrideAccess: true)으로 한다. 신청이 없는 E2E에서는 삭제 대상이 0건이다
+    await step(async () => {
+      const sessions = await payload.find({
+        collection: 'tour-sessions',
+        where: { tour: { in: tourIds } },
+        depth: 0,
+        pagination: false,
+      })
+      const sessionIds = sessions.docs.map((session) => session.id)
+      if (sessionIds.length === 0) return { errors: [] }
+      return payload.delete({ collection: 'applications', where: { session: { in: sessionIds } } })
+    })
     await step(() => payload.delete({ collection: 'tour-sessions', where: { tour: { in: tourIds } } }))
     await step(() => payload.delete({ collection: 'tours', where: { id: { in: tourIds } } }))
   }

@@ -2,14 +2,14 @@
 // - 기본 라디오 입력을 써서 한 번에 하나만 선택되고, 화살표 키 이동·비활성 항목 건너뛰기를 브라우저가 처리한다(AC-TOUR-011).
 // - 선택 가능 여부와 남은 자리는 조회 계층이 계산한 값(availability)만 쓴다. 여기서 다시 계산하지 않는다(plan.md 안티 패턴).
 // - 라벨 전체가 선택 영역이며 최소 44px(--touch-min)이다(AC-TOUR-014).
-// @MX:NOTE: [AUTO] 신청 SPEC 확장 지점 — 지금은 선택 값(name="session", value=회차 ID)을 어디에도 보내지 않는다.
-//   신청 기능은 이 목록을 신청 양식(form) 안에 넣어 선택 값을 받는다. 남은 자리는 조회 계층의 점유 인원 반영(catalog.ts NOTE)을 따른다
+// @MX:NOTE: [AUTO] 신청 SPEC(SPEC-APPLY-001 M5)에서 확장 완료 — 투어 상세가 이 목록을 GET 양식(action="/apply")으로 감싸
+//   선택 값(name="session", value=회차 ID)만 질의 문자열로 보낸다. required이면 회차를 고르지 않은 제출을 브라우저가 막는다(AC-APPLY-006)
 import type { CatalogSession } from '../lib/catalog'
 import { formatSeats, formatSessionDateTime } from '../lib/format'
 import { sessionStatusBadge } from '../lib/status-badge'
 import { StatusBadge } from './StatusBadge'
 
-export function SessionList({ sessions }: { sessions: CatalogSession[] }) {
+export function SessionList({ sessions, required = false }: { sessions: CatalogSession[]; required?: boolean }) {
   if (sessions.length === 0) {
     return <p className="text-(--color-text-2)">예정된 회차가 없습니다. 새 일정이 열리면 이곳에 표시됩니다.</p>
   }
@@ -33,6 +33,7 @@ export function SessionList({ sessions }: { sessions: CatalogSession[] }) {
                   name="session"
                   value={session.id}
                   disabled={disabled}
+                  required={required}
                   className="size-5 shrink-0 accent-(--color-accent)"
                 />
                 <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-(--space-3) gap-y-1">

@@ -254,6 +254,71 @@ AssertionError: expected { status: 'success', …(1) } to deeply equal { status:
 - 테스트 IP: `tests/helpers/application-fixtures.ts`의 `testIpPool(prefix, start)`가 파일마다 다른 대역·시작 번호를 내준다(동시성 `198.51.100.1~`, 신청 처리 `203.0.113.100~`, 횟수 제한 고정 `203.0.113.10~12`). E2E(M5)는 `198.51.100.x`를 쓸 예정이며, 통합 테스트가 끝나면 그 키의 기록은 남지 않는다.
 - 남은 범위: 서버 액션의 `x-forwarded-for` 추출·`website` FormData 해석·화면의 허니팟 배치(M5), 로그 비노출 전체 점검(M6 AC-APPLY-015).
 
+### M5 — 화면: 신청하기, 신청 화면, 서버 액션, 접수 완료
+
+기준 HEAD `5645d06`(main, M4 병합). 실행 위치는 격리 worktree(`.claude/worktrees/agent-a997625dc0149d938`), PostgreSQL 컨테이너는 본 checkout과 공유. 긴 출력은 `.moai/state/verify/apply001-m5/`(git 제외). 시작 시 `git merge --ff-only 5645d06` 후 `git log --oneline -1` = `5645d06 feat(SPEC-APPLY-001): M4 스팸 방지`, `pnpm install --frozen-lockfile` 종료 코드 0, `docker compose ps` = `postgres healthy`. E2E 포트 3100은 비어 있었고, 사용자의 3000번 개발 서버는 건드리지 않았다.
+
+**RED 1 — 단위·통합·저장소 규칙** (구현 전, `pnpm exec vitest run --coverage.enabled=false tests/unit/apply-form.spec.ts tests/integration/apply-pages.spec.ts tests/unit/repo-rules.spec.ts`, 종료 코드 1, `red.log`):
+
+```text
+ FAIL  |unit| tests/unit/apply-form.spec.ts [ tests/unit/apply-form.spec.ts ]
+Error: Cannot find module '../../src/lib/apply-form' imported from …/tests/unit/apply-form.spec.ts
+ FAIL  |integration| tests/integration/apply-pages.spec.ts [ tests/integration/apply-pages.spec.ts ]
+Error: Cannot find module '../../src/lib/application-summary' imported from …/tests/integration/apply-pages.spec.ts
+ FAIL  |unit| tests/unit/repo-rules.spec.ts > AC-APPLY-012 신청 화면 경로 규칙 > src/app/(frontend)/apply/ 아래에는 loading 파일이 없다
+Error: ENOENT: no such file or directory, scandir '…\src\app\(frontend)\apply'
+ FAIL  |unit| tests/unit/repo-rules.spec.ts > AC-APPLY-012 신청 화면 경로 규칙 > src/app/(frontend)/apply/page.tsx는 next/server의 connection을 import하고 await로 호출한다
+ FAIL  |unit| tests/unit/repo-rules.spec.ts > AC-APPLY-012 신청 화면 경로 규칙 > src/app/(frontend)/apply/complete/[ref]/page.tsx는 next/server의 connection을 import하고 await로 호출한다
+ Test Files  3 failed (3)
+      Tests  3 failed | 59 passed (62)
+```
+
+**RED 2 — E2E** (화면·정리 도우미 변경 전, `pnpm exec playwright test tests/e2e/apply.spec.ts tests/e2e/application-api.spec.ts`, `red-e2e.log`): `9 failed` / `5 passed (7.2m)`. 실패: AC-APPLY-006 첫 사례(`신청하기` 버튼 0개), AC-APPLY-007 구성·`3 / 5`·신청 불가 3종(`Expected: 200 / Received: 404`), AC-APPLY-008 화면, AC-APPLY-012 두 사례, AC-APPLY-016 시도 기록 정리, 그리고 `application-api.spec.ts`의 마지막 사례가 `afterAll` 정리에서 `Error: cleanup failed for 1 document(s)` — 신청이 있는 회차의 일괄 삭제가 회차 삭제 훅(REQ-APPLY-004)에 막힘(plan.md M5 정리 도우미 변경의 RED). 통과 5건은 구현 전에도 맞는 사례다: REST·GraphQL 조회 범위와 쓰기 403(M1에서 접근 규칙 구현), 신청 가능 회차 없는 상세의 버튼 부재, `/apply` 404 사례(경로 자체가 없어 404).
+
+RED 실행의 잔여 데이터: 실패마다 Playwright가 작업자를 다시 띄워 파일 최상위의 표식이 9개 생겼고, 정리가 신청 때문에 실패해 표식 투어 17개·신청 57건이 남았다. 임시 스크립트(`payload run .moai/state/verify/apply001-m5/residue.ts clean <표식 9개>`)로 그 표식의 신청 → 회차 → 투어와 E2E 대역(`198.51.100.200~254`) 키의 시도 기록만 지웠다: `{"testTours":17,"applications":57,…}` → `{"testTours":0,"applications":0,"attempts":0,"e2eAttempts":0,"testUsers":0}`.
+
+**GREEN** (구현 후):
+
+- 단위·통합·저장소 규칙 같은 3개 파일: 종료 코드 0, `Test Files 3 passed (3)` / `Tests 86 passed (86)` (`green.log`). 첫 GREEN 시도에서 통합 1건이 실패했다 — 테스트가 요약 결과에 표식이 없음을 단언했는데 투어 제목에 표식이 들어 있었다. 이름·이메일·연락처 값으로 검사하도록 테스트를 고쳤다.
+- E2E 같은 2개 파일: 종료 코드 0, `14 passed (35.4s)` (`green-e2e.log`).
+
+**M5 종료 시 전체 검증** (작업 트리 = M5 변경 전부, 커밋 직전, 순차 실행):
+
+| 명령 | 종료 코드 | 결과 | M4 대비 |
+|---|---|---|---|
+| `pnpm typecheck` | 0 | 출력 없음 | 같음 |
+| `pnpm generate:types` / `pnpm generate:importmap` | 0 / 0 | `src/payload-types.ts` 변경 없음(`git status --short`에 없음), `No new imports found, skipping writing import map` | — |
+| `pnpm build` | 0 | `✓ Compiled successfully`, 경로 `ƒ /apply`, `ƒ /apply/complete/[ref]` | — |
+| `pnpm test` | 0 | `Test Files 30 passed (30)` / `Tests 513 passed (513)` / `Lines : 98.98% ( 391/395 )` | +2 파일, +27건, 실패 0 |
+| `pnpm e2e` | 0 | `40 passed (59.1s)` | +14건(26 → 40), 실패 0 |
+| `pnpm lint` | 0 | 출력 없음 | 같음 |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | 같음 |
+| `git diff --stat 0cdea2f -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml` | 0 | 출력 없음 | — |
+
+테스트 데이터 잔여 확인(두 명령 뒤, `payload run`으로 개수만 조회): `{"testTours":0,"applications":0,"attempts":0,"e2eAttempts":0,"testUsers":0}`.
+
+| AC | 상태 | 검증 | 실제 결과 |
+|---|---|---|---|
+| AC-APPLY-003 (E2E 부분) | PASS | `tests/e2e/application-api.spec.ts` — 관리자 REST `GET /api/applications?where[email][equals]=…` 200·`totalDocs` 1·본문에 이메일, 익명 같은 요청 403 또는 빈 `docs`·본문에 이메일 없음 / 관리자 GraphQL(이메일을 질의문에 직접) 200·`errors` 없음·이메일 있음, 익명 `Forbidden` 메시지 또는 빈 `docs`·이메일 없음 / 익명·관리자 `POST` 정확히 403·이후 그 이메일 0건 / 관리자·익명 `PATCH`·`DELETE` 각각 정확히 403·이후 `pending` 그대로 | `pnpm e2e` 40/40. 관리자 화면 수동 확인은 여전히 보류(M1 행) |
+| AC-APPLY-006 | PASS | `tests/e2e/apply.spec.ts` — `/tours`의 T 카드 `남은 자리 2 / 5`, 상세 S1 `2 / 5`·S2 `0 / 3`+`자리 없음`+비활성, 회차 미선택 제출 시 경로 그대로, S1 선택 후 `/apply?session=<S1 ID>`, 마감 회차만 있는 투어 U에는 버튼 없음 | `pnpm e2e` 40/40 |
+| AC-APPLY-007 | PASS | 회차 A: 200·포트·투어 제목·일시·`남은 자리 15 / 15`·입력란 5개 라벨 연결·체크 상자 2개 미체크·필수/선택 고지 고정 문자열(`aria-describedby` 대상)·민감정보 안내·선택지 `1`~`10`·허니팟(뷰포트 밖, `tabindex -1`, `autocomplete off`, `aria-hidden` 조상) / 회차 B: `남은 자리 3 / 5`·선택지 `1`~`3` / 404 5종(`/apply`, `abc`, 비공개 투어 D, `2147483000`, `99999999999`) / 마감 C·시작함 E·자리 없음 F 각각 200·`신청할 수 없는 회차입니다`·T 상세 링크 1개·이름 입력란 없음 | `pnpm e2e` 40/40 + 통합 `apply-pages.spec.ts`(조회 함수 단독) |
+| AC-APPLY-008 (화면 부분) | PASS | 요청 사항 + 선택 동의 없음 제출 → 요청 사항 `aria-describedby` 대상에 `요청 사항을 남기려면 선택 동의에 체크하거나 입력란을 비워 주세요`, 경로 `/apply` 유지, 그 이메일 0건, 이름 입력값 유지 | `pnpm e2e` 40/40 |
+| AC-APPLY-012 | PASS | 제출 → `/apply/complete/SB-…` 경로·화면 접수 번호 일치·투어 제목·일시·`대기 — 관리자 확인 후 확정`·`인원` 짝 값 `2명`, 서버 HTML 원문(RSC 데이터 포함)에 이름·이메일·연락처·`applications/N`·`"id":N` 없음, `meta robots`에 `noindex`, 새로고침 후 1건, 상세 A 행 `13 / 15` / 자바스크립트를 끈 컨텍스트: POST 응답 `303`·`location`이 `/apply/complete/SB-`로 시작·최종 화면 접수 번호 / 404 3종(`SB-00000-00000`, `abc`, DB ID) / 소문자 경로 200·대문자 표시 / 저장소 규칙: `apply/`에 페이지 파일 있음·`loading` 없음·두 페이지 `connection()` | `pnpm e2e` 40/40 + `pnpm test` 513/513 |
+| AC-APPLY-015 (E2E URL 부분) | PASS | AC-APPLY-012 성공 흐름에서 거친 모든 페이지 URL(2개 이상 수집 확인)에 이름·이메일·연락처(원문·인코딩) 없음 | `pnpm e2e` 40/40. 로그 포착 통합 검사는 M6 |
+| AC-APPLY-016 (E2E 시도 기록 정리) | PASS | `apply.spec.ts`가 쓴 `198.51.100.200~` 키의 시도 기록: 지우기 전 ≥ 1, 지운 뒤 0(`afterAll`에서도 한 번 더 지움). E2E 정리 도우미가 회차 삭제 전 신청을 지움(`tests/helpers/e2e-catalog.ts`, 같은 `step()`) — 신청 없는 SPEC-TOUR-001 E2E 26건 그대로 통과 | `pnpm e2e` 40/40, 잔여 0 |
+
+결정 메모:
+
+- R10 실측: E2E가 `x-forwarded-for: 198.51.100.200~`을 보낸 제출 뒤 그 IP의 키(`HMAC-SHA256(PAYLOAD_SECRET, 'apply-rate-limit:198.51.100.20x')`)로 찾은 시도 기록이 1건 이상이었다(AC-APPLY-016 정리 단언). 개발 서버가 들어온 첫 값을 그대로 넘긴다는 plan.md §A.2 확인과 같다.
+- 서버 액션 `src/app/(frontend)/apply/actions.ts`는 `readApplyForm(FormData)` → `submitApplication(payload, input, { clientIp: clientIpFromHeaders(await headers()) })` → 성공이면 `try` 없이 `redirect('/apply/complete/<접수 번호>')`. 반환값은 `{ status: 'error', code, fieldErrors, values }`(값은 방문자 본인 입력, 회차·허니팟 제외 — 가정 A3)로 제한했다. 체크 상자는 FormData에 "있으면" 동의로 본다.
+- 신청 화면 조회는 조회 계층의 새 함수 `getApplySession`(익명 권한, `depth: 1`, 공개 투어의 회차만)이 맡는다. 예정 회차 조회(`startsAt > now`)를 쓰지 않아 시작한 회차도 404가 아닌 200 + 안내가 된다. 남은 자리는 목록·상세와 같은 `toSessions`(점유 인원 1회 조회 → `getSessionAvailability`)로 구한다.
+- 접수 완료 조회 `src/lib/application-summary.ts`의 `findApplicationSummary`는 대문자로 맞춘 뒤 형식이 틀리면 DB를 조회하지 않고 `null`(→ 404), 신청은 `select`로 접수 번호·인원·상태·회차만, 회차·투어는 따로 읽는다(`overrideAccess: true`, `@MX:NOTE`로 select 범위 고정 이유 기록).
+- 화면 문구는 `src/lib/apply-messages.ts`(오류 코드 → 한국어 안내, 상태 문구, 고정 문구), 양식 해석·인원 선택지는 `src/lib/apply-form.ts`에 두었다. 동의 고지 문구는 M2의 `consent.ts` 그대로 쓴다(버전 변경 없음 — 법률 문구 초안, **출시 전 전문가 확인 필요**).
+- 허니팟은 `aria-hidden="true"` 감싸는 요소를 화면 밖(`-left-[10000px]`)에 두고 `tabIndex={-1}`, `autoComplete="off"`. `display:none`은 쓰지 않았다(plan.md §B.8).
+- 상세 화면은 신청 가능 회차가 있을 때만 `SessionList`를 `<form method="get" action="/apply">`로 감싸고 라디오에 `required`를 준다. `SessionList`의 신청 SPEC 확장 `@MX:NOTE`를 "확장 완료"로 갱신했다.
+- 브라우저 쪽 검사: 이름·이메일·연락처·필수 동의에 `required`를 두었다. 서버 검증이 기준이며 브라우저 검사와 관계없이 다시 검증한다(REQ-APPLY-008).
+- 남은 범위(M6): 로그 포착 통합 검사(AC-APPLY-015 전체), 품질 게이트 정리, `progress.md` §E.3. 관리자 화면 읽기 전용 수동 확인(AC-APPLY-003)은 사람이 해야 한다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

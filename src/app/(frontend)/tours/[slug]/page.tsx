@@ -1,6 +1,7 @@
 // 투어 상세 /tours/[slug] — SPEC-TOUR-001 REQ-TOUR-010·011·012, AC-TOUR-011·012·013.
 // - 요청마다 렌더링한다(plan.md §B.3). generateStaticParams를 두지 않는다.
 // - 없는 slug·공개되지 않은 투어·형식에 맞지 않는 slug는 조회 계층이 null을 돌려주고, 여기서 404로 응답한다.
+// - 신청 가능 회차가 있으면 회차 목록을 GET 양식으로 감싸 "신청하기"를 보인다(SPEC-APPLY-001 REQ-APPLY-006, AC-APPLY-006).
 // @MX:NOTE: [AUTO] tours/ 아래에 loading 파일(Suspense 경계)을 두면 notFound()가 스트리밍 시작 뒤에 호출되어 404가 아니라 200으로 응답할 수 있다(R21).
 //   저장소 규칙 테스트(AC-TOUR-013 묶음)가 loading 파일 부재와 connection() 호출을 확인한다
 import config from '@payload-config'
@@ -23,6 +24,8 @@ export default async function TourDetailPage({ params }: TourDetailPageProps) {
   const payload = await getPayload({ config })
   const tour = await getTourDetailBySlug(payload, slug)
   if (tour === null) notFound()
+  // 신청 가능 회차가 하나도 없으면 "신청하기"를 그리지 않는다(SPEC-APPLY-001 REQ-APPLY-006)
+  const canApply = tour.sessions.some((session) => session.availability.selectable)
 
   return (
     <main className="mx-auto w-full max-w-(--content-max) px-(--page-x) py-(--space-8)">
@@ -54,7 +57,20 @@ export default async function TourDetailPage({ params }: TourDetailPageProps) {
             <h2 id="sessions-heading" className="mb-(--space-3) text-(length:--text-h3) font-bold">
               회차
             </h2>
-            <SessionList sessions={tour.sessions} />
+            {canApply ? (
+              // 회차 값만 질의 문자열로 신청 화면에 보낸다(개인정보 없음, SPEC-APPLY-001 plan.md §B.8)
+              <form method="get" action="/apply" className="flex flex-col gap-(--space-4)">
+                <SessionList sessions={tour.sessions} required />
+                <button
+                  type="submit"
+                  className="inline-flex min-h-(--button-height) w-full items-center justify-center rounded-(--radius-sm) bg-(--color-accent) px-(--space-6) font-semibold text-white hover:bg-(--color-accent-hover) sm:w-fit"
+                >
+                  신청하기
+                </button>
+              </form>
+            ) : (
+              <SessionList sessions={tour.sessions} />
+            )}
           </section>
         </div>
       </div>

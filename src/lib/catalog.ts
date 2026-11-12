@@ -127,6 +127,37 @@ export async function listPublishedTours(
   )
 }
 
+export type ApplySession = {
+  tour: { slug: string; title: string }
+  session: CatalogSession
+}
+
+/**
+ * 신청 화면(/apply?session=)의 회차 — SPEC-APPLY-001 REQ-APPLY-007.
+ * 회차가 없거나 공개 투어의 회차가 아니면 null(→ 404). 마감·시작함·자리 없음 회차는 null이 아니라 선택 불가 사유와 함께
+ * 돌려준다(→ 200 + 신청 불가 안내). 그래서 예정 회차 조회(findUpcomingSessions, 시작 시각 > 현재)를 쓰지 않는다.
+ */
+export async function getApplySession(
+  payload: Payload,
+  sessionId: number,
+  { now = new Date() }: CatalogOptions = {},
+): Promise<ApplySession | null> {
+  const result = await payload.find({
+    collection: 'tour-sessions',
+    where: { id: { equals: sessionId } },
+    depth: 1,
+    limit: 1,
+    pagination: false,
+    ...ANONYMOUS_READ,
+  })
+  const doc = result.docs[0]
+  // 익명 권한으로 채우지 못한 투어(공개되지 않음)는 ID(숫자)로만 남는다
+  if (doc === undefined || typeof doc.tour !== 'object' || doc.tour === null || doc.tour.published !== true) return null
+
+  const [session] = await toSessions(payload, [doc], now)
+  return { tour: { slug: doc.tour.slug, title: doc.tour.title }, session }
+}
+
 /** 공개 투어 상세. 없는 slug·공개되지 않은 투어·형식에 맞지 않는 slug는 null — REQ-TOUR-010·012. */
 export async function getTourDetailBySlug(
   payload: Payload,
