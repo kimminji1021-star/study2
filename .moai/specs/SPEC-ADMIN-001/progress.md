@@ -525,9 +525,184 @@ M5 구현 메모:
 - 표의 상태 열은 회차 문서의 `status`(`open` → `모집 중`, `closed` → `마감`)다. 정원이 찼지만 `open`인 회차는 남은 자리 0 + `모집 중`으로 보인다(사이트 접수·복원이 꽉 차면 회차를 `closed`로 바꾸므로 정상 흐름에서는 드묾)
 - 잔여 위험: 행 수 제한 없음(R11, `@MX:DEBT`). 화면 스타일은 Payload 테마 변수(`--theme-elevation-*`)에 기대어 다크 모드에서도 테두리만 바뀐다(색으로만 구분하는 정보 없음)
 
+### M6 — 개인정보 비노출 점검, 회귀 정리, 품질 게이트
+
+실행 위치: 격리 작업 트리(기준 HEAD `344829e` = M5 병합, `git merge --ff-only 344829e`로 맞춤), 셸 Git Bash, DB는 같은 공유 PostgreSQL(`postgres healthy`). `node_modules`가 없어 `pnpm install --frozen-lockfile`(종료 코드 0)부터 했다. 로그·스크린숏은 `.moai/state/verify/admin-m6/`(gitignore 대상).
+
+#### 개인정보 비노출 통합 시험(AC-ADMIN-015 로그 부분)
+
+새 파일 `tests/integration/admin-pii-logging.spec.ts`(5건). 신청마다 같은 표식 값(이름 `<표식>-이름`, 이메일 `<표식>@example.test`, 연락처 `010-66<무작위 6자리>`, 요청 사항 `<표식>-요청`)을 담고, `console`의 `log`·`info`·`warn`·`error`와 `payload.logger`의 `info`·`warn`·`error`·`debug`를 붙잡은 채 다음을 차례로 실행한다: (1) 상태 변경 성공, (2) 복원 정원 초과(409 `RESTORE_CAPACITY_EXCEEDED:`), (3) 회차 행을 쥔 동안 상태 변경 잠금 대기 초과(409 `SESSION_BUSY:`), (4) 같은 동안 요청 사항 삭제 잠금 대기 초과(`SESSION_BUSY`), (5) 요청 사항 삭제 성공(`cleared`), (6) 작업 기록 생성 실패로 인한 `INTERNAL_ERROR` — 상태 변경 경로(500 `INTERNAL_ERROR:`)와 요청 사항 삭제 경로 둘 다. 실패시킨 작업 기록 생성은 DB 오류처럼 메시지(`params: <표식 값들>`)와 `cause.detail`에 표식 값을 담는다. 단언: 붙잡은 출력 1건 이상이고 그중 하나에 `INTERNAL_ERROR`, 출력 전체에 표식 값(연락처는 정규화 형태 포함) 0건, 이 SPEC 코드가 던진 오류 객체 3개의 `cause`가 `undefined`이고 메시지·`inspect` 결과에 표식 값 0건, 요청 사항 삭제 결과 3개의 JSON에 표식 값 0건.
+
+- 첫 실행(구현은 M2·M3에 이미 있음): `pnpm exec vitest run tests/integration/admin-pii-logging.spec.ts --coverage.enabled=false` → 종료 코드 0, `Tests 5 passed (5)`(`m6-pii-first.log`). 동작이 이미 있어 이 시험은 처음부터 통과했다. RED에 해당하는 증거로 아래 변이 두 가지에서 실패함을 확인했다.
+- 변이 A(`src/lib/application-status.ts`): `toUpdateError`의 로그에 `detail: err.message`를 더하고 `ApplicationUpdateError` 생성자의 `delete this.cause`를 뺌 → 종료 코드 1, `Tests 2 failed | 3 passed (5)`(`m6-pii-mutation.log`):
+  ```
+  × 붙잡은 출력 전체에 네 표식 값(연락처는 정규화 형태 포함)이 하나도 없다
+  × 이 SPEC 코드가 던진 오류 객체에는 cause가 없고, 메시지·직렬화 결과에 표식 값이 없다
+  AssertionError: expected '{\n  code: \'SESSION_BUSY\',\n  error…' not to contain 'test-77e3df05-이름'
+  AssertionError: expected null to be undefined
+  ```
+  `git checkout -- src/lib/application-status.ts`로 되돌린 뒤 같은 명령: 종료 코드 0, `Tests 5 passed (5)`(`m6-pii-restored.log`).
+- 변이 B(`src/lib/clear-requests.ts`): 처리 함수의 오류 로그에 `detail: err.message`를 더함 → 종료 코드 1, `Tests 1 failed | 4 passed (5)`, `AssertionError: … not to contain 'test-d86b58e5-이름'`(`m6-pii-mutation-clear.log`). `git checkout -- src/lib/clear-requests.ts`로 되돌림.
+- 로그를 남기는 이 SPEC 코드는 세 곳이며 모두 코드·오류 종류 이름·ID만 담는다: `application-status.ts` `toUpdateError`, `clear-requests.ts` 처리 함수, `participants-csv-endpoint.ts`(M4 통합 시험이 같은 방식으로 판정). `src/`에 `console.*` 호출 0건(Grep `console\.(log|info|warn|error)` → 일치 없음).
+
+#### 작업 기록 관리자 화면 E2E(AC-ADMIN-015 화면 부분 — M3까지 빠져 있던 항목)
+
+M3 기록의 "관리자 화면 작업 기록 목록·상세 E2E 미검증"을 `tests/e2e/admin-ops.spec.ts`에 1건으로 더했다: 테스트 관리자 로그인 → `/admin/collections/admin-audit-logs`에 준비한 기록 행이 보이고 `Create New` 링크 0개 → 상세 `/admin/collections/admin-audit-logs/<ID>`에서 `#field-referenceCode`·`#field-actorId`·`#field-applicationId`·`#field-sessionId` `not.toBeEditable`, `#field-action`·`#field-fromStatus`·`#field-toStatus` 선택 상자 각각 `.rs__control--is-disabled` 1개, `#action-save` 0개.
+
+- 첫 실행: `pnpm exec playwright test tests/e2e/admin-ops.spec.ts` → 종료 코드 0, `11 passed (35.9s)`(`m6-e2e-admin-ops.log`). 동작은 M1에 이미 있다.
+- 변이(`src/collections/AdminAuditLogs.ts`): 컬렉션 `update: denyAll` → `adminOnly`, `referenceCode`의 `lockedField` 제거 → 종료 코드 1, `2 failed | 9 passed`(`m6-e2e-audit-screen-mutation.log`): `Error: admin PATCH Expected: 403 Received: 200`, `Error: #field-referenceCode expect(locator).not.toBeEditable() failed`. `git checkout -- src/collections/AdminAuditLogs.ts`로 되돌림(이 변이 실행이 PATCH로 바꾼 기록은 같은 파일의 정리 단계가 회차 ID로 지웠다 — 아래 잔여 검사 `audit_total=0`).
+- 스크린숏: `.moai/state/verify/admin-m6/admin-audit-logs-list.png`, `.moai/state/verify/admin-m6/admin-audit-logs-detail.png`.
+
+#### MX 태그 점검
+
+| 대상 | 계획(plan.md M6) | 상태 |
+|---|---|---|
+| `src/lib/application-status.ts` 신청 수정 보호 구간 | `@MX:WARN` + `@MX:REASON` | 있음(M2, 146~149행) — 내용이 최종 동작(회차 → 신청, 모든 분기 덮어쓰기, 같은 연결)과 일치 |
+| `src/lib/admin-audit.ts` `recordAdminAction` | `@MX:ANCHOR`(호출자 3곳) + `@MX:REASON` | 있음(M4) — 호출자 `application-status.ts`·`clear-requests.ts`·`participants-csv-endpoint.ts` |
+| `src/lib/admin-dashboard.ts` | `@MX:DEBT` + `@MX:CEILING` + `@MX:UPGRADE` | 있음(M5) |
+| `src/collections/Applications.ts` "로드맵 6번이 다시 정한다" `@MX:NOTE` | 갱신 | M1에서 갱신됨(REQ-ADMIN-002 관리자 단건·`status`만, 일괄 403). Grep `로드맵 6|6번 SPEC` → `src/`에 일치 없음 |
+| `src/lib/consent.ts` "즉시 삭제" `@MX:NOTE` | 갱신(동작이 생겼음) | **M6에서 갱신** — 관리자 상세의 "요청 사항 삭제" 버튼(REQ-ADMIN-008, `lib/clear-requests.ts`)이 그 절차이고, 요청 사항만 비우고 삭제 일시·작업 기록을 남기며, 회차 없는 신청은 지울 수 없음(F1 후속)을 적음. 고지 문구·버전 해시는 그대로(주석만) |
+
+`src/`에 `@MX:TODO` 0건, `Not implemented` 자리표시 0건(Grep).
+
+#### 회귀 정리
+
+- 테스트 코드의 이메일은 모두 `@example.test`(Grep `@[a-z0-9.-]+\.[a-z]{2,}` in `tests/` → `@example.test`·`@sub.example.test`만). 실제 관리자 계정을 쓰는 시험 없음.
+- 생성 파일: `pnpm generate:types`(종료 코드 0) · `pnpm generate:importmap`(종료 코드 0, `No new imports found, skipping writing import map`) 뒤 `git status --short`에 `payload-types.ts`·`importMap.js` 없음.
+- 범위 밖 항목(일괄 변경, 차트, 이메일, 회원, 배포, F1·F2)은 구현에 없다. `submit-application.ts`·`TourSessions.ts` 필드·`beforeDelete`는 그대로(아래 보존 검사).
+
+#### 최종 품질 게이트(plan.md §E — 최종 작업 트리, 이 순서대로)
+
+E-1(순차):
+
+| # | 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|---|
+| 1 | `docker compose ps --format '{{.Service}} {{.Health}}'` | 0 | `postgres healthy` | — |
+| 2 | `pnpm generate:types` / `pnpm generate:importmap` → `git status --short` | 0 / 0 | 생성 파일 변경 없음 | `m6-gentypes.log`, `m6-importmap.log` |
+| 3 | `pnpm typecheck` | 0 | `$ tsc --noEmit`, 오류 없음 | `final-typecheck.log` |
+| 4 | `pnpm build` | 0 | `✓ Compiled successfully` | `final-build.log` |
+| 5 | `pnpm test` | 0 | `Test Files 39 passed (39)`, `Tests 609 passed (609)`(M5 604 → +5), 커버리지 `All files │ 97.31 │ 90.05 │ 99.35 │ 99.34`(문장·분기·함수·라인), 85% 라인 임계값 통과 | `final-test.log` |
+| 6 | `pnpm e2e` | 0 | `60 passed (1.1m)`(M5 59 → +1) | `final-e2e.log` |
+| 7 | 변이(AC-ADMIN-006): `application-status.ts` 회차 행 질의의 `FOR UPDATE` 제거 → `pnpm exec vitest run tests/integration/application-status-concurrency.spec.ts --coverage.enabled=false` | 1 | `Tests 7 failed (7)` — `AssertionError: expected 0 to be greater than or equal to 1`(결정적 사례 잠금 대기 0개), `AssertionError: expected 6 to be less than or equal to 4`(병렬 정원 초과), `expected undefined to be 409`(잠금 대기 초과가 일어나지 않음) | `m6-mutation-lock.log` |
+| 7' | 되돌린 뒤(`git diff --stat` 출력 없음) 같은 명령 | 0 | `Tests 7 passed (7)` | `m6-mutation-lock-restored.log` |
+| 8 | 변이(AC-ADMIN-008): §B.2 5번 덮어쓰기를 `statusRequested === true && data.status !== previous`일 때만 → `pnpm exec vitest run tests/integration/clear-requests.spec.ts --coverage.enabled=false` | 1 | `Tests 6 failed \| 7 passed (13)` — 되살림 G·H, K, 병렬 3회 실패. `AssertionError: expected false to be true`(요청 사항이 되살아남), `AssertionError: expected null not to be null`(삭제 일시가 비워짐) | `m6-mutation-overwrite.log` |
+| 8' | 되돌린 뒤(`git diff --stat` 출력 없음) 같은 명령 | 0 | `Tests 13 passed (13)` | `m6-mutation-overwrite-restored.log` |
+
+(7·8은 `consent.ts`·`admin-ops.spec.ts` 변경 전의 같은 제품 코드에서 실행했다. 그 뒤 바뀐 것은 주석 1곳과 E2E 시험 1건이라 변이 대상 코드는 같다. 3~6은 최종 작업 트리에서 다시 실행한 결과다.)
+
+E-2(읽기 전용, 최종 작업 트리):
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `pnpm lint` | 0 | `$ eslint src tests scripts *.ts *.mjs *.mts`, 출력 없음 | `final-lint.log` |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | `final-format.log` |
+| `git status --short` | 0 | ` M src/lib/consent.ts`, ` M tests/e2e/admin-ops.spec.ts`, `?? tests/integration/admin-pii-logging.spec.ts`(커밋 전) | — |
+| `git diff --stat a8cf60b -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml src/lib/submit-application.ts` | 0 | 출력 없음(보존 파일 불변) | — |
+
+#### 데이터 정리(AC-ADMIN-016)
+
+`pnpm test`·`pnpm e2e` 뒤 Node `pg`로 실행(`.env`는 `process.loadEnvFile`로 읽고 값은 출력하지 않음, 스크립트는 세션 임시 폴더):
+
+```
+applications_example_test=1  tours_test_slug=0  users_example_test=0  users_example_test_excl_e2e=0  audit_orphans=0  audit_total=0  app_2033_exists=1  example_test_app_ids_other_than_2033=0  session_id_nullable=NO
+```
+
+- 판정: 기준값(M1 직후) 대비 증가 0. `applications_example_test=1`은 테스트 잔여가 아니라 개발 DB의 기존 신청 `SB-4KJFS-26FAM`(id 2033)이며, `example_test_app_ids_other_than_2033=0`으로 그 밖의 표식 신청이 없음을 확인했다. id 2033과 실제 관리자 계정은 건드리지 않았다. `applications.session_id`는 `NOT NULL` 그대로.
+- `users_example_test=0`: E2E 준비 단계의 테스트 관리자도 E2E 정리가 지웠다.
+
+#### 출시 전 점검 목록 후보(sync 단계가 옮김)
+
+- R20: 관리자 작업 기록 보관 2년(사용자 결정)이 법정 접속 기록 보관 기준과 맞는지 변호사 확인, 2년 지난 기록 자동 삭제는 미구현 — 배포 단계(로드맵 8번)
+- R23: Payload 기본 오류 기록(`routeError` → `logError`)이 저장 단계 DB 오류의 질의 바인딩 값(이름·연락처·요청 사항)을 기록할 수 있음 — 배포 SPEC에서 로거 직렬화 또는 로그 접근 통제·보관 기간 결정, 변호사 확인 목록과 연결
+
+M6 구현 메모:
+
+- 생성: `tests/integration/admin-pii-logging.spec.ts`(5건)
+- 수정: `tests/e2e/admin-ops.spec.ts`(작업 기록 관리자 화면 1건, 머리 주석), `src/lib/consent.ts`(`@MX:NOTE` 주석만 — `consentDocument()`·`PRIVACY_POLICY_VERSION` 불변, `tests/unit/consent.spec.ts` 통과)
+- 제품 동작 변경 없음. 변이 실행 다섯 번은 모두 `git checkout -- <파일>`로 되돌린 뒤 `git status --short`로 확인했다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<pending run-phase>_
+```yaml
+run_complete_at: 2026-11-16
+run_commit_sha: pending-backfill-m6   # 이 M6 커밋 자신의 SHA — 다음 커밋(sync)에서 채움
+run_base_head: 344829e                 # M5 병합
+run_status: complete-pending-human     # 자동 검증 전부 통과, 사람 확인 2건 남음(아래)
+milestone_commits: [M1 6f6020c, M2 5482520, M3 e443bb1, M4 030d8a1, M5 344829e, M6 pending-backfill-m6]
+m1_to_mN_commit_strategy: "마일스톤마다 격리 작업 트리에서 커밋 1개 → 오케스트레이터가 main에 fast-forward 병합(푸시는 오케스트레이터)"
+ac_pass_count: 16          # 자동 판정 부분 기준. 003·015는 수동 하위 항목이 PENDING-human
+ac_fail_count: 0
+ac_pending_human: [AC-ADMIN-003 (수동 상세·목록 화면 확인), AC-ADMIN-015 (수동 작업 기록 화면 확인)]
+tests:
+  unit_integration: "pnpm test → exit 0, Test Files 39 passed (39), Tests 609 passed (609) (기준선 521, M5 604)"
+  e2e: "pnpm e2e → exit 0, 60 passed (기준선 41, M5 59)"
+  coverage_lines_src_lib: "99.34% (임계값 85%)"
+quality_gate:
+  typecheck: 0
+  build: 0
+  lint: 0
+  format_check: 0
+  generated_files_drift: none
+mutation_checks:
+  ac_admin_006_lock_removed: "FAIL as expected (7 failed) → restored PASS (7 passed)"
+  ac_admin_008_overwrite_narrowed: "FAIL as expected (6 failed | 7 passed) → restored PASS (13 passed)"
+  ac_admin_015_log_detail_and_cause: "FAIL as expected (2 failed) → restored PASS (5 passed)"
+  ac_admin_015_clear_requests_log_detail: "FAIL as expected (1 failed) → restored"
+  ac_admin_015_audit_screen_access: "FAIL as expected (2 failed) → restored"
+preserve_list_post_run_count: 0   # git diff --stat a8cf60b -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml src/lib/submit-application.ts → 출력 없음
+leftover_data: "audit_orphans=0, tours_test_slug=0, users_example_test=0, applications_example_test=1 (= 기존 개발 신청 id 2033, 증가 0)"
+new_warnings_or_lints_introduced: 0
+new_dependencies: 0
+cross_platform_build:
+  windows_git_bash: "pnpm build exit 0"
+  other_os: not-run   # Windows 개발 환경만 확인. CI 결과는 오케스트레이터 몫
+l44_pre_commit_fetch: not-run   # 격리 작업 트리 에이전트 — 원격 동기화·푸시는 오케스트레이터
+l44_post_push_fetch: not-run    # 푸시하지 않음(지시)
+total_run_phase_files: 41       # M1~M5 38개(git diff --stat 30d5515..344829e) + M6 3개(새 파일 1, 수정 2)
+status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-docs) 몫
+```
+
+### 최종 AC 판정표(AC-ADMIN-001~016)
+
+| AC | 상태 | 근거(명령 · 관찰) |
+|---|---|---|
+| AC-ADMIN-001 | PASS | `pnpm test`(exit 0, 609 passed) — `users-auth.spec.ts` 등록 컬렉션 7개(필터 전이 더 김 먼저 단언), 인증 흐름 유지 |
+| AC-ADMIN-002 | PASS | 통합 `application-access.spec.ts`(단건 확정, 다른 필드 열 개 불변, 익명 거부, 일괄 `has disabled bulk edit`, 생성·삭제 거부) + E2E `application-api.spec.ts`(REST 200·403) + `admin-ops.spec.ts`(GraphQL) — `pnpm e2e` exit 0, 60 passed |
+| AC-ADMIN-003 | PASS(E2E) / **PENDING-human(수동)** | E2E: 상세 상태만 편집 가능·선택지 3개·`확정` 저장 → 완료 화면 `dd` 정확히 `확정`, 목록 `Create New` 0·`Edit`/`Delete` 0. **수동 확인(사용자가 관리자 화면에서 상세·목록 직접 확인)은 아직 없음** |
+| AC-ADMIN-004 | PASS | `application-status.spec.ts` 전환표·`cancelledAt`·점유 인원·작업 기록 정확히 4건 |
+| AC-ADMIN-005 | PASS | 통합(S5·S4·U6·V3, 회차 없는 신청 O·O2 — 상태 변경·요청 사항 삭제 `SESSION_MISSING`), E2E REST 409·화면 알림. 회차 없는 신청은 DB가 `NOT NULL`이라 테스트 트랜잭션 안의 `ALTER … DROP NOT NULL`로만 재현(되돌림, 아래 이월) |
+| AC-ADMIN-006 | PASS | `application-status-concurrency.spec.ts`(결정적·병렬 3회·잠금 대기 초과), `clear-requests.spec.ts`(삭제 ↔ 상태 변경 결정적 K·병렬 3회), E2E REST 409 `SESSION_BUSY`. 변이 7: 잠금 제거 시 7 failed → 되돌려 7 passed |
+| AC-ADMIN-007 | PASS | 취소가 `closed`를 풀지 않음, 조회 계층 사유 `closed`, 이어진 접수 `SESSION_CLOSED` |
+| AC-ADMIN-008 | PASS | `clear-requests.spec.ts` 13건(권한·코드·원자성·잠금 대기 초과·되살림 G/H) + E2E REST. 변이 8: 덮어쓰기 축소 시 6 failed → 되돌려 13 passed |
+| AC-ADMIN-009 | PASS | E2E: 버튼·확인 대화 상자 취소/삭제·삭제 뒤 화면·HTML에 표식 없음·요청 사항 없는 신청은 버튼 없음 |
+| AC-ADMIN-010 | PASS | `tests/unit/participants-csv.spec.ts` 27건(BOM·CRLF·따옴표·수식 주입·RFC 4180 재해석) |
+| AC-ADMIN-011 | PASS | E2E `participants-csv.spec.ts` 3건 + 통합 4건(머리글·순서·수식 방어·거부 4종·작업 기록 정확히 1건) |
+| AC-ADMIN-012 | PASS | `admin-dashboard.spec.ts` 8건(행 값·순서·비공개 투어·카탈로그와 같은 남은 자리·질의 수 고정·`connect` = `query`) |
+| AC-ADMIN-013 | PASS | E2E `admin-dashboard.spec.ts` 3건(열 머리글·행 값·`비공개` 표시·CSV 링크·내려받기·익명 로그인 이동) |
+| AC-ADMIN-014 | PASS | `application-status.spec.ts`(사용자 없는 변경 `actorId` 비어 있음, 기록 JSON에 개인정보 없음, 필드 목록, 원자성 2종) |
+| AC-ADMIN-015 | PASS(자동) / **PENDING-human(수동)** | 통합 접근(`admin-audit.spec.ts`), E2E REST 403(`admin-ops.spec.ts`), **M6** E2E 관리자 화면 목록·상세 읽기 전용, **M6** 로그 개인정보 비노출(`admin-pii-logging.spec.ts` 5건 — 붙잡은 출력 ≥1·`INTERNAL_ERROR` 있음·표식 0건·`cause` 없음). **수동 확인(사용자가 메뉴에서 작업 기록을 열어 읽기 전용과 세 종류 기록을 확인)은 아직 없음** |
+| AC-ADMIN-016 | PASS | `pnpm test` exit 0 + `pnpm e2e` exit 0, 라인 커버리지 99.34%, 잔여 검사 4종 기준값 대비 증가 0(`applications_example_test=1`은 기존 개발 신청 id 2033) |
+
+### 사람 확인 대기(PENDING-human)
+
+1. **AC-ADMIN-003 수동**: 실제 관리자 계정으로 관리자 화면 신청 상세에서 상태만 편집 가능하고 다른 필드는 회색으로 막혀 있으며, 목록에 일괄 동작이 없음을 확인 → 결과를 이 파일 §E.2에 기록
+2. **AC-ADMIN-015 수동**: 관리자 화면 메뉴에서 "작업 기록"을 열어 목록이 읽기 전용이고 상태 변경·요청 사항 삭제·CSV 내려받기 기록이 보임을 확인 → 결과를 이 파일 §E.2에 기록
+
+참고 화면(테스트 관리자, E2E 스크린숏): `.moai/state/verify/admin-m3/admin-detail-*.png`, `.moai/state/verify/admin-m5/dashboard-*.png`, `.moai/state/verify/admin-m6/admin-audit-logs-{list,detail}.png`
+
+### 이월 항목(sync 단계·후속 SPEC)
+
+| 항목 | 넘길 곳 | 내용 |
+|---|---|---|
+| `applications.session_id` NOT NULL 사실 반영 | manager-spec(sync 시) | 실제 DB는 `session_id`가 `NOT NULL`(외래 키 `ON DELETE SET NULL`)이라 "회차 없는 신청"이 커밋될 수 없다. `spec.md` §2.5·§5, `plan.md` §A.2·§B.2 3번·R24, `acceptance.md` AC-ADMIN-005의 "원시 SQL로 `session_id`를 `NULL`로 바꾼다", F1 이월 설명을 이 사실에 맞게 고칠지 판단. `SESSION_MISSING` 분기는 방어 코드로 유지 중 |
+| O1 | manager-spec | REQ-ADMIN-002에 "회차 없는 신청은 REQ-ADMIN-005에 따라 거부" 교차 참조 한 구절 |
+| O3 | manager-spec | plan §B.2 3단계에 "회차 `FOR UPDATE`가 0행이면 `SESSION_MISSING`" 한 구절(코드는 이미 그렇게 동작, M2 추가 사례로 시험) |
+| R23 | 출시 전 점검 → 배포 SPEC(로드맵 8번) | Payload 기본 오류 기록의 질의 바인딩 값(개인정보) 처리 — 로거 직렬화 또는 로그 접근 통제·보관 기간, 변호사 확인 목록과 연결 |
+| R20 | 출시 전 점검 → 배포 단계 | 작업 기록 보관 2년의 법정 기준 확인, 2년 지난 기록 자동 삭제 구현 |
+| F1 | 후속 SPEC | 회차 삭제 경합(SPEC-APPLY-001) — 해결 때 회차 없는 신청의 요청 사항(민감정보) 삭제도 함께 다룸(위 NOT NULL 사실과 함께 재검토) |
+| F2 | 후속 SPEC | SPEC-APPLY-001 지적 F2(이 SPEC 범위 밖, `submit-application.ts` 불변) |
+| R26 ② | 후속 SPEC | 사이트 접수 자동 마감의 중첩 `payload.update(tour-sessions)`가 회차 행을 쥔 채 문서 잠금 행을 지워 관리자 회차 저장과 교착 가능 → 원시 SQL 마감으로 |
+| 공유 DB 스키마 | 사용자 확인 | M1 기록대로 `admin_audit_logs` 테이블·`requests_deleted_at` 열이 공유 개발 DB에 있다. main에 병합된 지금은 개발 서버도 같은 스키마라 문제 없음 |
 
 ## §E.4 Sync-phase Audit-Ready Signal
 

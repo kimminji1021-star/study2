@@ -36,7 +36,8 @@ export const REQUESTS_CONSENT: ConsentNotice = {
 }
 
 // 요청 사항 입력란 바로 위에 두는 안내
-// @MX:NOTE: [AUTO] "확인하는 즉시 삭제"는 운영 약속이다 — 관리자가 민감정보를 발견하면 지우는 절차가 출시 전에 있어야 한다
+// @MX:NOTE: [AUTO] "확인하는 즉시 삭제"는 운영 약속이다 — 관리자 신청 상세의 "요청 사항 삭제" 버튼(SPEC-ADMIN-001 REQ-ADMIN-008,
+//   lib/clear-requests.ts)이 그 절차다. 요청 사항만 비우고 삭제 일시·작업 기록을 남긴다. 회차 없는 신청은 지울 수 없다(F1 후속)
 export const SENSITIVE_INFO_NOTICE =
   '건강 상태·장애·복용 약, 종교·신념, 정치적 견해 등 민감한 정보는 적지 마세요. 적힌 경우 확인하는 즉시 삭제합니다.'
 

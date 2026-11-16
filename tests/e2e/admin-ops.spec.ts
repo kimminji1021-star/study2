@@ -1,6 +1,7 @@
 // SPEC-ADMIN-001 M3 E2E — 관리자 신청 상세 화면과 요청 사항 삭제, 신청 수정의 REST·GraphQL 경로.
 // - AC-ADMIN-002(GraphQL updateApplication), AC-ADMIN-003(상세·목록 화면), AC-ADMIN-005(REST 409·화면 알림),
-//   AC-ADMIN-006(REST 409 SESSION_BUSY), AC-ADMIN-008(요청 사항 삭제 REST), AC-ADMIN-009(삭제 화면), AC-ADMIN-015(작업 기록 REST 403).
+//   AC-ADMIN-006(REST 409 SESSION_BUSY), AC-ADMIN-008(요청 사항 삭제 REST), AC-ADMIN-009(삭제 화면),
+//   AC-ADMIN-015(작업 기록 REST 403, 관리자 화면의 작업 기록 목록·상세 읽기 전용 — M6).
 // - 관리자는 준비 단계(global-setup.ts)가 만든 테스트 관리자만 쓴다. 요청 API는 로그인 토큰을 Authorization: JWT로 보낸다.
 // - 데이터는 표식 투어(test-<무작위 값>…)에 만들고 끝나면 cleanupCatalogFixture가 신청 → 작업 기록 → 회차 → 투어 순서로 지운다.
 // - 화면 증거(스크린숏)는 .moai/state/verify/admin-m3/에 남긴다(gitignore 대상).
@@ -18,6 +19,7 @@ import { readTestAdmin } from '../helpers/test-admin'
 
 const FORBIDDEN_MESSAGE = 'You are not allowed to perform this action.'
 const SHOT_DIR = path.join(repoRoot, '.moai', 'state', 'verify', 'admin-m3')
+const SHOT_DIR_M6 = path.join(repoRoot, '.moai', 'state', 'verify', 'admin-m6')
 
 type Prepared = { id: number; referenceCode: string; requests?: string | null }
 
@@ -231,6 +233,40 @@ test.describe('작업 기록 쓰기 거부(AC-ADMIN-015)', () => {
     const list = await anonymous.get('/api/admin-audit-logs')
     expect([200, 403]).toContain(list.status())
     if (list.status() === 200) expect(((await list.json()) as { docs?: unknown[] }).docs).toEqual([])
+  })
+
+  test('관리자 화면: 작업 기록 목록이 보이고 새로 만들기가 없으며, 상세의 입력란은 편집할 수 없고 저장 버튼이 없다', async ({
+    page,
+  }) => {
+    const log = await payload.create({
+      collection: 'admin-audit-logs',
+      data: {
+        action: 'application.status_change',
+        occurredAt: new Date().toISOString(),
+        applicationId: apps.noRequests.id,
+        referenceCode: apps.noRequests.referenceCode,
+        sessionId,
+        fromStatus: 'pending',
+        toStatus: 'confirmed',
+      } as never,
+    })
+
+    await loginAsAdmin(page)
+    await page.goto('/admin/collections/admin-audit-logs')
+    await expect(page.locator('tr', { hasText: apps.noRequests.referenceCode })).toBeVisible()
+    await expect(page.getByRole('link', { name: /create new/i })).toHaveCount(0)
+    await page.screenshot({ path: path.join(SHOT_DIR_M6, 'admin-audit-logs-list.png'), fullPage: true })
+
+    await page.goto(`/admin/collections/admin-audit-logs/${log.id}`)
+    await expect(page.locator('#field-referenceCode')).toHaveValue(apps.noRequests.referenceCode)
+    for (const field of ['#field-referenceCode', '#field-actorId', '#field-applicationId', '#field-sessionId']) {
+      await expect(page.locator(field), field).not.toBeEditable()
+    }
+    for (const select of ['#field-action', '#field-fromStatus', '#field-toStatus']) {
+      await expect(page.locator(`${select} .rs__control--is-disabled`), select).toHaveCount(1)
+    }
+    await expect(page.locator('#action-save')).toHaveCount(0)
+    await page.screenshot({ path: path.join(SHOT_DIR_M6, 'admin-audit-logs-detail.png'), fullPage: true })
   })
 })
 
