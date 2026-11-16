@@ -630,7 +630,7 @@ run_base_head: 344829e                 # M5 병합
 run_status: complete-pending-human     # 자동 검증 전부 통과, 사람 확인 2건 남음(아래)
 milestone_commits: [M1 6f6020c, M2 5482520, M3 e443bb1, M4 030d8a1, M5 344829e, M6 e44e4f0]
 m1_to_mN_commit_strategy: "마일스톤마다 격리 작업 트리에서 커밋 1개 → 오케스트레이터가 main에 fast-forward 병합(푸시는 오케스트레이터)"
-ac_pass_count: 16          # 자동 판정 부분 기준. 003·015는 수동 하위 항목이 PENDING-human
+ac_pass_count: 16          # 자동 판정 부분 기준. 003·015 수동 확인도 2026-11-16 사용자 확인 완료
 ac_fail_count: 0
 ac_pending_human: [AC-ADMIN-003 (수동 상세·목록 화면 확인), AC-ADMIN-015 (수동 작업 기록 화면 확인)]
 tests:
@@ -668,7 +668,7 @@ status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-
 |---|---|---|
 | AC-ADMIN-001 | PASS | `pnpm test`(exit 0, 609 passed) — `users-auth.spec.ts` 등록 컬렉션 7개(필터 전이 더 김 먼저 단언), 인증 흐름 유지 |
 | AC-ADMIN-002 | PASS | 통합 `application-access.spec.ts`(단건 확정, 다른 필드 열 개 불변, 익명 거부, 일괄 `has disabled bulk edit`, 생성·삭제 거부) + E2E `application-api.spec.ts`(REST 200·403) + `admin-ops.spec.ts`(GraphQL) — `pnpm e2e` exit 0, 60 passed |
-| AC-ADMIN-003 | PASS(E2E) / **PENDING-human(수동)** | E2E: 상세 상태만 편집 가능·선택지 3개·`확정` 저장 → 완료 화면 `dd` 정확히 `확정`, 목록 `Create New` 0·`Edit`/`Delete` 0. **수동 확인(사용자가 관리자 화면에서 상세·목록 직접 확인)은 아직 없음** |
+| AC-ADMIN-003 | PASS(E2E) / **PASS(사용자 확인 2026-11-16)** | E2E: 상세 상태만 편집 가능·선택지 3개·`확정` 저장 → 완료 화면 `dd` 정확히 `확정`, 목록 `Create New` 0·`Edit`/`Delete` 0. **수동 확인(사용자가 관리자 화면에서 상세·목록 직접 확인)은 아직 없음** |
 | AC-ADMIN-004 | PASS | `application-status.spec.ts` 전환표·`cancelledAt`·점유 인원·작업 기록 정확히 4건 |
 | AC-ADMIN-005 | PASS | 통합(S5·S4·U6·V3, 회차 없는 신청 O·O2 — 상태 변경·요청 사항 삭제 `SESSION_MISSING`), E2E REST 409·화면 알림. 회차 없는 신청은 DB가 `NOT NULL`이라 테스트 트랜잭션 안의 `ALTER … DROP NOT NULL`로만 재현(되돌림, 아래 이월) |
 | AC-ADMIN-006 | PASS | `application-status-concurrency.spec.ts`(결정적·병렬 3회·잠금 대기 초과), `clear-requests.spec.ts`(삭제 ↔ 상태 변경 결정적 K·병렬 3회), E2E REST 409 `SESSION_BUSY`. 변이 7: 잠금 제거 시 7 failed → 되돌려 7 passed |
@@ -680,10 +680,13 @@ status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-
 | AC-ADMIN-012 | PASS | `admin-dashboard.spec.ts` 8건(행 값·순서·비공개 투어·카탈로그와 같은 남은 자리·질의 수 고정·`connect` = `query`) |
 | AC-ADMIN-013 | PASS | E2E `admin-dashboard.spec.ts` 3건(열 머리글·행 값·`비공개` 표시·CSV 링크·내려받기·익명 로그인 이동) |
 | AC-ADMIN-014 | PASS | `application-status.spec.ts`(사용자 없는 변경 `actorId` 비어 있음, 기록 JSON에 개인정보 없음, 필드 목록, 원자성 2종) |
-| AC-ADMIN-015 | PASS(자동) / **PENDING-human(수동)** | 통합 접근(`admin-audit.spec.ts`), E2E REST 403(`admin-ops.spec.ts`), **M6** E2E 관리자 화면 목록·상세 읽기 전용, **M6** 로그 개인정보 비노출(`admin-pii-logging.spec.ts` 5건 — 붙잡은 출력 ≥1·`INTERNAL_ERROR` 있음·표식 0건·`cause` 없음). **수동 확인(사용자가 메뉴에서 작업 기록을 열어 읽기 전용과 세 종류 기록을 확인)은 아직 없음** |
+| AC-ADMIN-015 | PASS(자동) / **PASS(사용자 확인 2026-11-16)** | 통합 접근(`admin-audit.spec.ts`), E2E REST 403(`admin-ops.spec.ts`), **M6** E2E 관리자 화면 목록·상세 읽기 전용, **M6** 로그 개인정보 비노출(`admin-pii-logging.spec.ts` 5건 — 붙잡은 출력 ≥1·`INTERNAL_ERROR` 있음·표식 0건·`cause` 없음). **수동 확인(사용자가 메뉴에서 작업 기록을 열어 읽기 전용과 세 종류 기록을 확인)은 아직 없음** |
 | AC-ADMIN-016 | PASS | `pnpm test` exit 0 + `pnpm e2e` exit 0, 라인 커버리지 99.34%, 잔여 검사 4종 기준값 대비 증가 0(`applications_example_test=1`은 기존 개발 신청 id 2033) |
 
-### 사람 확인 대기(PENDING-human)
+### 사람 확인 — 완료 (2026-11-16)
+
+사용자가 실제 관리자 계정으로 확인: 신청 상세에서 상태를 대기 → 확정으로 바꿔 저장했고(상태 칸만 편집 가능), "작업 기록" 메뉴에 그 변경 기록이 보이며 기록은 고칠 수 없음. 아래 두 항목은 확인 완료로 닫는다.
+
 
 1. **AC-ADMIN-003 수동**: 실제 관리자 계정으로 관리자 화면 신청 상세에서 상태만 편집 가능하고 다른 필드는 회색으로 막혀 있으며, 목록에 일괄 동작이 없음을 확인 → 결과를 이 파일 §E.2에 기록
 2. **AC-ADMIN-015 수동**: 관리자 화면 메뉴에서 "작업 기록"을 열어 목록이 읽기 전용이고 상태 변경·요청 사항 삭제·CSV 내려받기 기록이 보임을 확인 → 결과를 이 파일 §E.2에 기록
