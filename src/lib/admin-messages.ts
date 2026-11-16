@@ -15,6 +15,16 @@ export const APPLICATION_UPDATE_MESSAGES = {
 
 export type ApplicationUpdateErrorCode = keyof typeof APPLICATION_UPDATE_MESSAGES
 
+// 관리자 첫 화면의 회차 현황 표 문구(한국어, plan.md §B.6). 열 머리글 순서가 표의 열 순서다
+export const SESSION_DASHBOARD_UI = {
+  caption: '다가오는 회차 현황',
+  headers: ['투어', '시작 일시', '정원', '대기', '확정', '남은 자리', '상태', '참가자 명단'],
+  unpublished: '비공개',
+  status: { open: '모집 중', closed: '마감' },
+  csvLink: 'CSV 내려받기',
+  empty: '다가오는 회차가 없습니다',
+} as const
+
 // 관리자 상세 화면의 요청 사항 삭제 문구(한국어, plan.md §B.4)
 export const CLEAR_REQUESTS_UI = {
   button: '요청 사항 삭제',

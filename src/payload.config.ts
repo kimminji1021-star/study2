@@ -27,6 +27,10 @@ assertRequiredEnv(process.env)
 export default buildConfig({
   admin: {
     user: Users.slug,
+    // 관리자 첫 화면의 회차 현황 표(SPEC-ADMIN-001 REQ-ADMIN-011). 기본 대시보드의 컬렉션 카드 위에 그려진다
+    components: {
+      beforeDashboard: ['/components/admin/SessionDashboard#SessionDashboard'],
+    },
     importMap: {
       baseDir: path.resolve(dirname),
     },

@@ -440,6 +440,91 @@ M4 구현 메모:
 - 작업 기록은 엔드포인트의 `req`로 남긴다(엔드포인트에는 트랜잭션이 없어 `create`가 자기 트랜잭션으로 커밋한 뒤 응답한다 — "응답 전에 저장")
 - 잔여 위험(R7): 전각 외의 다른 유니코드 변형(예: 다른 언어의 등호 모양 문자)이나 엑셀 외 프로그램의 해석 차이는 다루지 않는다. OWASP도 "보편적인 방법은 없다"고 적는다. 하이픈 없는 연락처의 앞자리 0 표시 문제(R8)는 그대로다
 
+### M5 — 회차 현황 대시보드
+
+실행 위치: 격리 작업 트리(기준 HEAD `030d8a1` = M4 병합, `git merge --ff-only 030d8a1`로 맞춤), 셸 Git Bash, DB는 같은 공유 PostgreSQL(`postgres healthy`). 로그는 `.moai/state/verify/admin-m5/`(gitignore 대상).
+
+RED 1 — 통합(데이터 함수·상태별 합계 함수는 `Not implemented` 자리표시, 서버 구성 요소는 `null`만 돌려주는 상태, `pnpm exec vitest run tests/integration/admin-dashboard.spec.ts --coverage.enabled=false`, 종료 코드 1, `m5-int-red.log`):
+
+```
+     × 점유 인원 모듈의 상태별 합계: 대기 + 확정 = 점유 인원(getOccupiedSeatsBySession), 신청 없는 회차는 0, 빈 목록은 빈 Map 10ms
+     × 지난 회차(S0)는 빠지고 S1, S2, S3이 시작 일시 순으로 나온다 0ms
+     × 행 값: 대기·확정은 상태별 인원 합계(취소 제외), 남은 자리·상태·CSV 경로, 비공개 투어 회차도 포함 0ms
+     × S1의 남은 자리가 조회 계층(getTourDetailBySlug)의 S1 남은 자리와 같다(같은 점유 인원 정의) 11ms
+     × 질의 수: 회차 1개일 때와 6개일 때 같고 1 이상이며, 직접 연결로 나간 질의가 없다 25ms
+       × 관리자: 열 머리글, 행 값, 비공개 투어 행에만 `비공개` 표시, CSV 링크(download) 1ms
+Error: Not implemented.
+AssertionError: expected null not to be null
+ Test Files  1 failed (1)
+      Tests  6 failed | 1 passed (7)
+```
+
+(통과한 1건은 "관리자가 아니면 아무것도 그리지 않는다" — 자리표시가 늘 `null`이라 RED에서도 통과하는 보호 시험이다. 관리자 사례가 실패해 자리표시가 아님을 함께 보인다.)
+
+RED 2 — E2E(`beforeDashboard` 미등록, `pnpm exec playwright test tests/e2e/admin-dashboard.spec.ts`, 종료 코드 1, `m5-e2e-red.log`):
+
+```
+  x  1 [chromium] › tests\e2e\admin-dashboard.spec.ts:67:3 › 회차 현황 대시보드(AC-ADMIN-013) › 관리자 첫 화면: 열 머리글, 공개·비공개 투어 행의 값과 `비공개` 표시, CSV 링크 주소 (26.1s)
+  x  2 [chromium] › tests\e2e\admin-dashboard.spec.ts:108:3 › 회차 현황 대시보드(AC-ADMIN-013) › CSV 링크를 누르면 내려받기: 파일 이름 session-<S1>-participants.csv, BOM, 첫 줄 머리글 (2.0m)
+    Error: expect(locator).toBeVisible() failed
+    Error: element(s) not found
+      - waiting for getByRole('table', { name: '다가오는 회차 현황' })
+    Error: page.waitForEvent: Test timeout of 120000ms exceeded.
+    waiting for event "download"
+  2 failed
+  1 passed (2.6m)
+```
+
+(통과한 1건은 익명 `/admin` → 로그인 화면 사례로, 기존 Payload 동작이다.)
+
+GREEN — 통합 같은 명령: 종료 코드 0, `Tests 7 passed (7)`(`m5-int-green.log`). E2E 같은 명령: 종료 코드 0, `3 passed (15.4s)`(`m5-e2e-green.log`).
+
+REFACTOR — (1) 숫자 열 머리글을 숫자와 같은 쪽(오른쪽)으로 맞춤. (2) 데이터 함수의 상태별 인원 기본값(`{ pending: 0, confirmed: 0, … }`)을 빼서 상태 이름을 대시보드 코드에 쓰지 않음(점유 인원 모듈이 요청한 회차마다 항목을 만든다). (3) 다가오는 회차가 없는 경우 시험 추가(기준 시각 `9999-01-01` → 빈 목록, 질의 1회) → `Tests 8 passed (8)`(`m5-int-refactor.log`).
+
+M5 완료 검증(HEAD `030d8a1` + M5 작업 트리 변경, 아래 순서대로 실행):
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `pnpm generate:importmap` | 0 | `importMap.js`에 `SessionDashboard` import 1줄 + 항목 1줄 추가(내용 변경 있음 → 커밋) | `m5-importmap.log` |
+| `pnpm generate:types` | 0 | `payload-types.ts` 변경 없음 | `m5-gentypes.log` |
+| `pnpm typecheck` | 0 | `$ tsc --noEmit`, 오류 없음 | `m5-typecheck.log` |
+| `pnpm lint` | 0 | `$ eslint src tests scripts *.ts *.mjs *.mts`, 출력 없음 | `m5-lint.log` |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | `m5-format.log` |
+| `pnpm build` | 0 | `✓ Compiled successfully`, `/admin/[[...segments]]` 동적 경로 포함 | `m5-build.log`, `m5-build-final.log` |
+| `pnpm test` | 0 | `Test Files 38 passed (38)`, `Tests 604 passed (604)`(M4 596 → +8), 라인 커버리지 99.34%, `admin-dashboard.ts` 라인 100%·분기 66.66%, `occupancy.ts` 라인 100%·분기 70% | `m5-test-final.log` |
+| `pnpm e2e` | 0 | `59 passed (1.0m)`(M4 56 → +3) | `m5-e2e-final.log` |
+| `git diff --stat 030d8a1 -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml src/lib/submit-application.ts src/collections` | 0 | 출력 없음(보존 파일 불변) | — |
+
+AC 상태(M5 범위):
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-ADMIN-012 | PASS | `tests/integration/admin-dashboard.spec.ts` 8건. 공개 투어 T의 S1(+2일 정원 10: 대기 1·1, 확정 3, 취소 4)·S2(+3일 정원 3 `closed`: 대기 3)·S0(−1일: 대기 1), 비공개 투어 P의 S3(+4일 정원 6: 확정 2). 표식 행만 걸러 S0 없이 `[S1, S2, S3]` 순서. S1 = `{ tourTitle: T 제목, tourPublished: true, capacity: 10, pending: 2, confirmed: 3, remainingSeats: 5, status: 'open', csvPath: '/api/tour-sessions/<S1>/participants-csv' }`(`toEqual`), S2 대기 3·확정 0·남은 자리 0·`closed`, S3 `tourPublished: false`·정원 6·대기 0·확정 2·남은 자리 4·`open`. S1 남은 자리 = `getTourDetailBySlug`의 S1 남은 자리(5). 상태별 합계 함수: S1 `{ pending: 2, confirmed: 3, occupied: 5 }`, 각 회차 `occupied` = `getOccupiedSeatsBySession` 값, 빈 목록 → 빈 Map. 질의 수: Q 회차 1개 대 6개(Q 행 6개 먼저 확인)에서 `pool.query` 수가 같고 1 이상, 각 구간 `connect` = `query`. 다가오는 회차 없음 → 빈 목록, 질의 1회 |
+| AC-ADMIN-013 | PASS | `tests/e2e/admin-dashboard.spec.ts` 3건. 테스트 관리자 로그인 → `/admin`의 표(접근 이름 `다가오는 회차 현황`)에 열 머리글 `투어`·`시작 일시`·`정원`·`대기`·`확정`·`남은 자리`·`상태`. T 행: 시작 일시 = `formatSessionDateTime(S1)`, `10`·`2`·`3`·`5`·`모집 중`, 투어 칸에 `비공개` 없음, `CSV 내려받기` `href` = `/api/tour-sessions/<S1>/participants-csv`. P 행: 투어 칸에 `비공개`, `6`·`0`·`2`·`4`·`모집 중`, `href` = `/api/tour-sessions/<S3>/participants-csv`. T 행 링크 클릭 → `download` 이벤트, 제안 파일 이름 `session-<S1>-participants.csv`, 파일이 `EF BB BF`로 시작, 첫 줄에 `접수번호`. 익명 브라우저 `/admin` → `/admin/login`, 표 0개 |
+| REQ-ADMIN-011 (관리자 전용) | PASS | 같은 통합 파일: 서버 구성 요소가 사용자 `null`·`undefined`·`{ collection: 'members' }`이면 `null`. 관리자면 `renderToStaticMarkup` 결과에 7개 열 머리글, S1 행 칸 `['10','2','3','5','모집 중']`·`비공개` 없음·링크 `download`, S2 행 `마감`, S3 행 `비공개`·`['6','0','2','4','모집 중']`, S0 행 없음 |
+
+화면 증거(E2E가 저장, gitignore 대상):
+
+- `.moai/state/verify/admin-m5/dashboard-full.png` — 로그인 후 `/admin` 전체(표가 컬렉션 카드 위)
+- `.moai/state/verify/admin-m5/dashboard-table.png` — 표만(공개 투어 행, `비공개` 배지가 붙은 비공개 투어 행, 개발 DB의 실제 회차 행)
+- `.moai/state/verify/admin-m5/dashboard-anonymous-login.png` — 익명 `/admin` → 로그인 화면
+
+데이터 정리(`pnpm test`·`pnpm e2e` 뒤, Node `pg`로 실행, `.env` 값 출력 없음):
+
+```
+audit_orphans=0  audit_total=0  applications_example_test=1  tours_test_slug=0  users_example_test_excl_e2e=0  app_2033_exists=1
+```
+
+- `applications_example_test=1`은 M1 기준값과 같은 개발 신청 `SB-4KJFS-26FAM`(id 2033)이며 그대로 있다. E2E의 CSV 내려받기 클릭이 남긴 작업 기록은 정리 도우미가 회차 ID로 지웠다(`audit_total=0`).
+
+M5 구현 메모:
+
+- 생성: `src/lib/admin-dashboard.ts`(`getSessionDashboard(payload, { now })` — 회차 `find`(`startsAt > now`, `sort: ['startsAt', 'id']`, 공개 여부 무관) → 투어 `find`(`id in`, `select: { title, published }`) → `getSeatsByStatusBySession` → `getSessionAvailability`로 남은 자리. 질의 3회 고정, `@MX:DEBT` + `@MX:CEILING` + `@MX:UPGRADE`), `src/components/admin/SessionDashboard.tsx`(서버 구성 요소, `isAdmin`이 아니면 `null`, `<caption>` 접근 이름, 행에 `data-session-id`, 비공개 배지는 글자 `비공개`, `CSV 내려받기` 링크 `download`, 빈 경우 `다가오는 회차가 없습니다`), 시험 2개(`tests/integration/admin-dashboard.spec.ts` 8건, `tests/e2e/admin-dashboard.spec.ts` 3건)
+- 수정: `src/lib/occupancy.ts`(`getSeatsByStatusBySession`·`SeatsByStatus`·`OccupyingStatus` 추가만 — 같은 `OCCUPYING_STATUSES`로 `GROUP BY session_id, status` 1회, 점유 인원은 이 모듈 안에서 합산. 기존 `sumBySession`·두 함수 불변, `@MX:ANCHOR` 호출자 목록 갱신), `src/lib/session-availability.ts`(`@MX:ANCHOR` 호출자 목록에 대시보드 추가 — 주석만), `src/lib/admin-messages.ts`(`SESSION_DASHBOARD_UI` 문구), `src/payload.config.ts`(`admin.components.beforeDashboard` 등록), 생성 파일 `src/app/(payload)/admin/importMap.js`
+- CSV 경로는 `payload.config.routes.api`(기본 `/api`)로 만든다. 표에는 7개 열 + 링크 열(머리글 `참가자 명단`)이 있다(D5 열 목록 그대로, 링크 열은 REQ-ADMIN-011의 "행마다 CSV 링크")
+- 표의 상태 열은 회차 문서의 `status`(`open` → `모집 중`, `closed` → `마감`)다. 정원이 찼지만 `open`인 회차는 남은 자리 0 + `모집 중`으로 보인다(사이트 접수·복원이 꽉 차면 회차를 `closed`로 바꾸므로 정상 흐름에서는 드묾)
+- 잔여 위험: 행 수 제한 없음(R11, `@MX:DEBT`). 화면 스타일은 Payload 테마 변수(`--theme-elevation-*`)에 기대어 다크 모드에서도 테두리만 바뀐다(색으로만 구분하는 정보 없음)
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_
