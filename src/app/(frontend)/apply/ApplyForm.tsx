@@ -33,7 +33,7 @@ const EMPTY_VALUES: ApplyFormValues = {
 const errorId = (field: ApplicationField) => `apply-${field}-error`
 
 const inputClass =
-  'min-h-(--touch-min) w-full rounded-(--radius-sm) border border-(--color-input-border) bg-(--color-bg) px-(--space-3) py-(--space-2) aria-invalid:border-(--status-canceled-fg)'
+  'min-h-(--touch-min) w-full rounded-(--radius-md) border border-(--color-input-border) bg-(--color-bg) px-(--space-4) py-(--space-2) aria-invalid:border-(--status-canceled-fg)'
 
 function FieldError({ field, message }: { field: ApplicationField; message: string | undefined }) {
   if (message === undefined) return null
@@ -181,7 +181,9 @@ export function ApplyForm({ sessionId, partySizes }: { sessionId: number; partyS
       </Labeled>
 
       <fieldset className="flex flex-col gap-(--space-4)">
-        <legend className="mb-(--space-3) text-(length:--text-h3) font-bold">개인정보 수집·이용 동의</legend>
+        <legend className="mb-(--space-3) text-(length:--text-h3) leading-(--leading-h3) font-semibold tracking-(--tracking-h3)">
+          개인정보 수집·이용 동의
+        </legend>
 
         <div className="flex flex-col gap-(--space-2)">
           <Notice id="apply-privacy-notice" notice={REQUIRED_CONSENT} />
@@ -244,7 +246,7 @@ export function ApplyForm({ sessionId, partySizes }: { sessionId: number; partyS
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex min-h-(--button-height) w-full items-center justify-center rounded-(--radius-sm) bg-(--color-accent) px-(--space-6) font-semibold text-white hover:bg-(--color-accent-hover) disabled:opacity-60 sm:w-fit"
+        className="inline-flex min-h-(--button-height) w-full items-center justify-center rounded-(--radius-pill) bg-(--color-accent) px-(--space-8) font-semibold text-white transition-colors hover:bg-(--color-accent-hover) disabled:opacity-60 sm:w-fit"
       >
         {pending ? APPLY_TEXT.submitting : APPLY_TEXT.submit}
       </button>

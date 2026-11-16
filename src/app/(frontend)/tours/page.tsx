@@ -21,21 +21,32 @@ export default async function ToursPage() {
   const payload = await getPayload({ config })
   const tours = await listPublishedTours(payload)
 
+  // 머리글은 흰 면, 카드 목록은 연회색 면에 둔다 — 구분선 대신 면의 바뀜으로 영역을 나눈다(handoff.md §3, 2026-11-16)
   return (
-    <main className="mx-auto w-full max-w-(--content-max) px-(--page-x) py-(--space-12)">
-      <h1 className="text-(length:--text-h1) leading-tight font-bold">투어 목록</h1>
-      <p className="mt-(--space-2) text-(--color-text-2)">모든 투어는 현장 결제입니다.</p>
-      {tours.length === 0 ? (
-        <p className="mt-(--space-8) text-(--color-text-2)">지금은 공개된 투어가 없습니다.</p>
-      ) : (
-        <ul className="mt-(--space-8) grid gap-(--space-6) sm:grid-cols-2 lg:grid-cols-3">
-          {tours.map((tour) => (
-            <li key={tour.id}>
-              <TourCard tour={tour} />
-            </li>
-          ))}
-        </ul>
-      )}
+    <main className="w-full">
+      <div className="bg-(--surface-white)">
+        <div className="mx-auto w-full max-w-(--content-max) px-(--page-x) pt-(--section-y) pb-(--space-12)">
+          <h1 className="text-(length:--text-h1) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)">
+            투어 목록
+          </h1>
+          <p className="mt-(--space-3) text-(--color-text-2)">모든 투어는 현장 결제입니다.</p>
+        </div>
+      </div>
+      <div className="bg-(--surface-parchment)">
+        <div className="mx-auto w-full max-w-(--content-max) px-(--page-x) py-(--section-y)">
+          {tours.length === 0 ? (
+            <p className="text-(--color-text-2)">지금은 공개된 투어가 없습니다.</p>
+          ) : (
+            <ul className="grid gap-(--space-6) sm:grid-cols-2 lg:grid-cols-3">
+              {tours.map((tour) => (
+                <li key={tour.id}>
+                  <TourCard tour={tour} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </main>
   )
 }

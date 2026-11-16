@@ -26,7 +26,7 @@ export function SessionList({ sessions, required = false }: { sessions: CatalogS
           return (
             <li key={session.id}>
               <label
-                className={`flex min-h-(--touch-min) items-center gap-(--space-3) rounded-(--radius-sm) border border-(--color-input-border) px-(--space-4) py-(--space-3) has-checked:border-(--color-accent) has-checked:bg-(--color-accent-tint) ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                className={`flex min-h-(--touch-min) items-center gap-(--space-3) rounded-(--radius-md) border border-(--color-input-border) bg-(--color-bg) px-(--space-4) py-(--space-3) transition-colors has-checked:border-(--color-accent) has-checked:bg-(--color-accent-tint) ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
               >
                 <input
                   type="radio"

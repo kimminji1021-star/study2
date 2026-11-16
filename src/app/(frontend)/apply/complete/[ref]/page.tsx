@@ -30,15 +30,17 @@ export default async function ApplyCompletePage({ params }: ApplyCompletePagePro
   if (summary === null) notFound()
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-(--space-6) px-(--page-x) py-(--space-12)">
-      <div className="flex flex-col gap-(--space-2)">
-        <h1 className="text-(length:--text-h1) leading-tight font-bold">{APPLY_TEXT.completeTitle}</h1>
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-(--space-8) px-(--page-x) pt-(--space-12) pb-(--section-y)">
+      <div className="flex flex-col gap-(--space-3)">
+        <h1 className="text-(length:--text-h1) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)">
+          {APPLY_TEXT.completeTitle}
+        </h1>
         <p className="text-(--color-text-2)">{APPLY_TEXT.completeBody}</p>
       </div>
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-(--space-6) gap-y-(--space-3) rounded-(--radius-lg) bg-(--color-surface) p-(--space-6)">
         <dt className="text-(--color-text-2)">접수 번호</dt>
-        <dd className="font-mono text-(length:--text-h3) font-bold tracking-wide">{summary.referenceCode}</dd>
+        <dd className="font-mono text-(length:--text-h3) font-semibold tracking-wide">{summary.referenceCode}</dd>
         <dt className="text-(--color-text-2)">투어</dt>
         <dd className="font-semibold">{summary.tourTitle}</dd>
         <dt className="text-(--color-text-2)">회차</dt>
@@ -51,7 +53,7 @@ export default async function ApplyCompletePage({ params }: ApplyCompletePagePro
 
       <Link
         href="/tours"
-        className="inline-flex min-h-(--touch-min) w-fit items-center rounded-(--radius-sm) border border-(--color-accent) px-(--space-6) font-semibold text-(--color-accent) hover:bg-(--color-accent-tint)"
+        className="inline-flex min-h-(--touch-min) w-fit items-center rounded-(--radius-pill) border border-(--color-accent) px-(--space-8) font-semibold text-(--color-accent) transition-colors hover:bg-(--color-accent-tint)"
       >
         {APPLY_TEXT.toTours}
       </Link>

@@ -7,8 +7,12 @@
 
 @layer base {
   /* 제목 글자 크기는 화면마다 유틸리티로 정한다(임시 홈 h1의 text-4xl을 덮지 않게 전역 제목 규칙은 두지 않는다) */
+  /* 본문 글자 크기·줄 간격·자간은 토큰을 따른다(2026-11-16 디자인 방향 갱신). 유틸리티 클래스가 있으면 그쪽이 이긴다 */
   body {
     font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    letter-spacing: var(--tracking-body);
     color: var(--color-text);
     background-color: var(--color-bg);
     word-break: keep-all;

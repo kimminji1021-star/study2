@@ -5,11 +5,13 @@ import Link from 'next/link'
 export default function FrontendNotFound() {
   return (
     <main className="mx-auto flex min-h-[60vh] w-full max-w-(--content-max) flex-col items-center justify-center gap-(--space-4) px-(--page-x) py-(--space-12) text-center">
-      <h1 className="text-(length:--text-h2) font-bold">페이지를 찾을 수 없습니다</h1>
+      <h1 className="text-(length:--text-h2) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)">
+        페이지를 찾을 수 없습니다
+      </h1>
       <p className="text-(--color-text-2)">주소가 바뀌었거나 지금은 볼 수 없는 투어입니다.</p>
       <Link
         href="/tours"
-        className="inline-flex min-h-(--touch-min) items-center rounded-(--radius-sm) bg-(--color-accent) px-(--space-6) font-semibold text-white hover:bg-(--color-accent-hover)"
+        className="inline-flex min-h-(--touch-min) items-center rounded-(--radius-pill) bg-(--color-accent) px-(--space-8) font-semibold text-white transition-colors hover:bg-(--color-accent-hover)"
       >
         투어 목록 보기
       </Link>

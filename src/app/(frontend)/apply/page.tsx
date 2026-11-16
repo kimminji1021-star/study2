@@ -37,10 +37,12 @@ export default async function ApplyPage({ searchParams }: ApplyPageProps) {
   const tourHref = `/tours/${tour.slug}`
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-(--space-8) px-(--page-x) py-(--space-8)">
-      <header className="flex flex-col gap-(--space-3)">
-        <h1 className="text-(length:--text-h1) leading-tight font-bold">{APPLY_TEXT.formTitle}</h1>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-(--space-4) gap-y-(--space-2) rounded-(--radius-md) bg-(--color-surface) p-(--space-4)">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-(--space-12) px-(--page-x) pt-(--space-12) pb-(--section-y)">
+      <header className="flex flex-col gap-(--space-6)">
+        <h1 className="text-(length:--text-h1) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)">
+          {APPLY_TEXT.formTitle}
+        </h1>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-(--space-6) gap-y-(--space-3) rounded-(--radius-lg) bg-(--color-surface) p-(--space-6)">
           <dt className="text-(--color-text-2)">투어</dt>
           <dd className="font-semibold">{tour.title}</dd>
           <dt className="text-(--color-text-2)">회차</dt>
@@ -54,13 +56,16 @@ export default async function ApplyPage({ searchParams }: ApplyPageProps) {
         <ApplyForm sessionId={session.id} partySizes={partySizeOptions(availability.remainingSeats)} />
       ) : (
         <section aria-labelledby="unavailable-heading" className="flex flex-col items-start gap-(--space-4)">
-          <h2 id="unavailable-heading" className="text-(length:--text-h2) font-bold">
+          <h2
+            id="unavailable-heading"
+            className="text-(length:--text-h2) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)"
+          >
             {APPLY_TEXT.unavailableTitle}
           </h2>
           <p className="text-(--color-text-2)">{APPLY_TEXT.unavailableBody}</p>
           <Link
             href={tourHref}
-            className="inline-flex min-h-(--touch-min) items-center rounded-(--radius-sm) bg-(--color-accent) px-(--space-6) font-semibold text-white hover:bg-(--color-accent-hover)"
+            className="inline-flex min-h-(--touch-min) items-center rounded-(--radius-pill) bg-(--color-accent) px-(--space-8) font-semibold text-white transition-colors hover:bg-(--color-accent-hover)"
           >
             {APPLY_TEXT.backToTour}
           </Link>

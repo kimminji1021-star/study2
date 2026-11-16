@@ -27,67 +27,85 @@ export default async function TourDetailPage({ params }: TourDetailPageProps) {
   // 신청 가능 회차가 하나도 없으면 "신청하기"를 그리지 않는다(SPEC-APPLY-001 REQ-APPLY-006)
   const canApply = tour.sessions.some((session) => session.availability.selectable)
 
+  // 위쪽(사진·정보·회차)은 흰 면, 투어 소개는 연회색 면에 둔다 — 면의 바뀜이 섹션 구분선 역할을 한다(handoff.md §3, 2026-11-16)
   return (
-    <main className="mx-auto w-full max-w-(--content-max) px-(--page-x) py-(--space-8)">
-      <Link
-        href="/tours"
-        className="inline-flex min-h-(--touch-min) items-center text-(length:--text-small) font-medium text-(--color-accent) hover:text-(--color-accent-hover)"
-      >
-        ← 투어 목록
-      </Link>
+    <main className="w-full">
+      <div className="bg-(--surface-white)">
+        <div className="mx-auto w-full max-w-(--content-max) px-(--page-x) pt-(--space-8) pb-(--section-y)">
+          <Link
+            href="/tours"
+            className="inline-flex min-h-(--touch-min) items-center text-(length:--text-small) font-medium text-(--color-accent) hover:text-(--color-accent-hover)"
+          >
+            ← 투어 목록
+          </Link>
 
-      <div className="mt-(--space-4) grid gap-(--space-8) lg:grid-cols-2">
-        <div className="overflow-hidden rounded-(--radius-lg)">
-          <TourImage image={tour.heroImage} priority />
-        </div>
+          <div className="mt-(--space-4) grid gap-(--space-12) lg:grid-cols-2">
+            {/* 그림자는 면 위에 놓인 사진에만 쓴다(카드·버튼에는 쓰지 않는다) */}
+            <div className="self-start overflow-hidden rounded-(--radius-lg) shadow-(--shadow-photo)">
+              <TourImage image={tour.heroImage} priority />
+            </div>
 
-        <div className="flex min-w-0 flex-col gap-(--space-6)">
-          <h1 className="text-(length:--text-h1) leading-tight font-bold">{tour.title}</h1>
+            <div className="flex min-w-0 flex-col gap-(--space-8)">
+              <h1 className="text-(length:--text-h1) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)">
+                {tour.title}
+              </h1>
 
-          <dl className="grid grid-cols-[auto_1fr] gap-x-(--space-4) gap-y-(--space-2) rounded-(--radius-md) bg-(--color-surface) p-(--space-4)">
-            <dt className="text-(--color-text-2)">소요 시간</dt>
-            <dd>{formatDuration(tour.durationMinutes)}</dd>
-            <dt className="text-(--color-text-2)">집결 장소</dt>
-            <dd>{tour.meetingPoint}</dd>
-            <dt className="text-(--color-text-2)">가격</dt>
-            <dd>{tour.priceNote}</dd>
-          </dl>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-(--space-6) gap-y-(--space-3) rounded-(--radius-lg) bg-(--color-surface) p-(--space-6)">
+                <dt className="text-(--color-text-2)">소요 시간</dt>
+                <dd>{formatDuration(tour.durationMinutes)}</dd>
+                <dt className="text-(--color-text-2)">집결 장소</dt>
+                <dd>{tour.meetingPoint}</dd>
+                <dt className="text-(--color-text-2)">가격</dt>
+                <dd>{tour.priceNote}</dd>
+              </dl>
 
-          <section aria-labelledby="sessions-heading">
-            <h2 id="sessions-heading" className="mb-(--space-3) text-(length:--text-h3) font-bold">
-              회차
-            </h2>
-            {canApply ? (
-              // 회차 값만 질의 문자열로 신청 화면에 보낸다(개인정보 없음, SPEC-APPLY-001 plan.md §B.8)
-              <form method="get" action="/apply" className="flex flex-col gap-(--space-4)">
-                <SessionList sessions={tour.sessions} required />
-                <button
-                  type="submit"
-                  className="inline-flex min-h-(--button-height) w-full items-center justify-center rounded-(--radius-sm) bg-(--color-accent) px-(--space-6) font-semibold text-white hover:bg-(--color-accent-hover) sm:w-fit"
+              <section aria-labelledby="sessions-heading">
+                <h2
+                  id="sessions-heading"
+                  className="mb-(--space-4) text-(length:--text-h3) leading-(--leading-h3) font-semibold tracking-(--tracking-h3)"
                 >
-                  신청하기
-                </button>
-              </form>
-            ) : (
-              <SessionList sessions={tour.sessions} />
-            )}
-          </section>
+                  회차
+                </h2>
+                {canApply ? (
+                  // 회차 값만 질의 문자열로 신청 화면에 보낸다(개인정보 없음, SPEC-APPLY-001 plan.md §B.8)
+                  <form method="get" action="/apply" className="flex flex-col gap-(--space-6)">
+                    <SessionList sessions={tour.sessions} required />
+                    <button
+                      type="submit"
+                      className="inline-flex min-h-(--button-height) w-full items-center justify-center rounded-(--radius-pill) bg-(--color-accent) px-(--space-8) font-semibold text-white transition-colors hover:bg-(--color-accent-hover) sm:w-fit"
+                    >
+                      신청하기
+                    </button>
+                  </form>
+                ) : (
+                  <SessionList sessions={tour.sessions} />
+                )}
+              </section>
+            </div>
+          </div>
         </div>
       </div>
 
-      <section aria-labelledby="about-heading" className="mt-(--space-12) max-w-3xl">
-        <h2 id="about-heading" className="mb-(--space-3) text-(length:--text-h2) font-bold">
-          투어 소개
-        </h2>
-        <div className="flex flex-col gap-(--space-4) leading-relaxed">
-          {/* 빈 줄은 문단 경계, 한 줄 바꿈은 그대로 보인다(plan.md §B.2). 일반 텍스트라 React 기본 이스케이프로 충분하다 */}
-          {splitParagraphs(tour.description).map((paragraph, index) => (
-            <p key={index} className="whitespace-pre-line">
-              {paragraph}
-            </p>
-          ))}
+      <div className="bg-(--surface-parchment)">
+        <div className="mx-auto w-full max-w-(--content-max) px-(--page-x) py-(--section-y)">
+          <section aria-labelledby="about-heading" className="max-w-3xl">
+            <h2
+              id="about-heading"
+              className="mb-(--space-6) text-(length:--text-h2) leading-(--leading-heading) font-semibold tracking-(--tracking-heading)"
+            >
+              투어 소개
+            </h2>
+            <div className="flex flex-col gap-(--space-4)">
+              {/* 빈 줄은 문단 경계, 한 줄 바꿈은 그대로 보인다(plan.md §B.2). 일반 텍스트라 React 기본 이스케이프로 충분하다 */}
+              {splitParagraphs(tour.description).map((paragraph, index) => (
+                <p key={index} className="whitespace-pre-line">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
     </main>
   )
 }
