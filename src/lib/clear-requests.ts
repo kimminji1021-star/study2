@@ -17,6 +17,7 @@ import {
 import { isAdmin } from './access'
 import { recordAdminAction } from './admin-audit'
 import { applicationUpdateErrorCode, markRequestsClear, unmarkRequestsClear } from './application-status'
+import { parseRouteId } from './route-id'
 import { transactionDb } from './transaction-db'
 
 export type ClearRequestsErrorCode =
@@ -38,9 +39,6 @@ export type ClearRequestsOptions = {
   req?: PayloadRequest
 }
 
-// PostgreSQL integer 열의 최댓값. 이보다 큰 ID는 질의 전에 NOT_FOUND로 끝낸다
-const MAX_ID = 2147483647
-
 // 수정 보호 구간이 던지는 오류 중 이 동작의 결과 코드로 그대로 내보내는 것. 나머지는 INTERNAL_ERROR
 const PASS_THROUGH_CODES: readonly ClearRequestsErrorCode[] = ['REQUESTS_EMPTY', 'SESSION_BUSY', 'SESSION_MISSING']
 
@@ -60,14 +58,6 @@ function failure(code: ClearRequestsErrorCode): ClearRequestsResult {
   return { status: 'error', code }
 }
 
-/** 경로 값 → 신청 ID. 앞자리 0·부호·소수점·공백 없는 1~2147483647 정수만 받는다. */
-function parseApplicationId(value: unknown): number | null {
-  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : ''
-  if (!/^[1-9]\d{0,9}$/.test(text)) return null
-  const id = Number(text)
-  return id <= MAX_ID ? id : null
-}
-
 /**
  * 신청 한 건의 요청 사항을 지운다(plan.md §B.4 순서). 관리자 확인 → ID 확인 → 트랜잭션 → 잠금 없는 존재 확인 →
  * 요청 사항 삭제 표시 → 같은 req의 단건 수정(보호 구간이 잠그고 판단·저장) → 작업 기록 → 주입 지점 → 커밋. 예외면 되돌린다.
@@ -77,7 +67,7 @@ export async function clearApplicationRequests(
   { applicationId, user, now = new Date(), beforeCommit, req: given }: ClearRequestsOptions,
 ): Promise<ClearRequestsResult> {
   if (!isAdmin(user)) return failure('FORBIDDEN')
-  const id = parseApplicationId(applicationId)
+  const id = parseRouteId(applicationId)
   if (id === null) return failure('NOT_FOUND')
 
   const req = given ?? (await createLocalReq({ user: user as never }, payload))

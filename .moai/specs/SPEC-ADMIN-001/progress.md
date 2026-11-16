@@ -343,6 +343,103 @@ M3 구현 메모:
 - AC-ADMIN-015 E2E의 작업 기록 REST 403은 M3 범위가 아니지만 같은 E2E 파일에 값싸게 더했다.
 - 남은 M3 항목 없음. 수동 확인(AC-ADMIN-003)은 사용자 몫이다.
 
+### M4 — 참가자 CSV
+
+실행 위치: 격리 작업 트리(기준 HEAD `e443bb1` = M3 병합), 셸 Git Bash, DB는 같은 공유 PostgreSQL. 로그는 `.moai/state/verify/admin-m4/`(gitignore 대상).
+
+OWASP CSV Injection 확인(plan.md §C·§A.2 마지막 행, R7). 오케스트레이터가 2026-11-16에 https://owasp.org/www-community/attacks/CSV_Injection 을 WebFetch로 열었다(지금은 community.owasp.org에서 제공됨). 확인한 내용:
+
+- 무력화할 시작 문자: `=`, `+`, `-`, `@`, 탭(0x09), CR(0x0D), LF(0x0A), 전각 `＝` `＋` `－` `＠`
+- 완화: 모든 칸을 큰따옴표로 감싸고, 칸 안의 `"`는 두 번 쓰고, 위험한 시작 문자 앞에 작은따옴표 `'`를 붙인다(OWASP는 엑셀에서 관찰된 탭 앞붙임 변형도 적는다). 구분자·따옴표도 무력화해 공격자가 새 칸을 시작하지 못하게 한다
+- 주의: "There is no universal CSV sanitization strategy". `-` 앞붙임은 정상 음수를 바꾼다
+- §B.5 목록과의 차이: OWASP 목록에 LF와 전각 네 글자가 더 있다. plan.md §C는 "다르면 차단자 보고"라 적었지만, 오케스트레이터가 위임 지시에서 "plan보다 엄격한 쪽을 따르고 전각·줄바꿈까지 시험하라"고 정해 주었으므로 차단 없이 **상위 집합**(§B.5 6자 + LF + 전각 4자)으로 구현했다. AC-ADMIN-010의 사례(§B.5 6자에 `'`, `김=민지`·`010-1234-5678`은 그대로)는 모두 그대로 성립한다
+- 열별 판단: 모든 열에 같은 규칙을 건다. 인원은 양의 정수(`isValidPartySize`)라 `-`로 시작할 수 없어 음수 왜곡 문제가 없다. 연락처는 글자열로 다루며 `+82 …`는 `'`가 붙는다(plan.md §B.5 — 붙이지 않으면 엑셀이 수식으로 읽어 오류를 보임). 접수 번호(`SB-…`)·상태 라벨은 위험 문자로 시작하지 않는다. 이름·이메일·요청 사항은 사용자 입력이라 규칙이 그대로 걸린다. 구분자(쉼표)와 칸 안 줄바꿈은 모든 칸을 따옴표로 감싸 한 칸으로 남고, 칸 안의 `"`는 `""`로 바뀌어 칸을 끝내지 못한다
+
+RED 1 — 단위(형식 함수 자리표시만 둔 상태, `pnpm exec vitest run tests/unit/participants-csv.spec.ts --coverage.enabled=false`, 종료 코드 1, `m4-unit-red.log`):
+
+```
+     × BOM으로 시작하고 첫 줄이 정확히 머리글이며 모든 줄이 CRLF로 끝난다 3ms
+     × 행이 없으면 BOM + 머리글 한 줄뿐이다 0ms
+     × 상태 라벨·인원·빈 요청 사항 0ms
+     × 큰따옴표는 두 번 쓰고, 쉼표·줄바꿈이 든 값은 따옴표 안에 그대로 둔다 0ms
+     × 수식 시작 문자 "=1+1"는 앞에 작은따옴표를 붙인다 0ms
+     … ("+82 10-1234-5678", "-5", "@SUM(A1)", "\t=1", "\r=1", "\n=1", "＝1+1", "＋82", "－5", "＠SUM(A1)", "=HYPERLINK(\"x\")")
+     × 첫 글자가 위험 문자가 아닌 "김=민지"는 바뀌지 않는다 0ms
+     … ("010-1234-5678", "01012345678", "'=이미 작은따옴표", " =앞 공백", "a,=b", "")
+     × 숫자·빈 값도 문자열 칸으로 나간다 0ms
+     × 모든 열에 같은 규칙이 걸린다(이름·이메일·연락처·접수 번호·요청 사항) 0ms
+     × RFC 4180 방식으로 다시 나누면 행 수가 입력 + 1이고 각 칸이 (붙인 `'`를 뺀) 원래 값과 같다 0ms
+     × 파일 이름은 회차 ID만 담는다 0ms
+ Test Files  1 failed (1)
+      Tests  27 failed (27)
+```
+
+RED 2 — 통합(엔드포인트 처리 함수 자리표시, `pnpm exec vitest run tests/integration/participants-csv.spec.ts --coverage.enabled=false`, 종료 코드 1, `m4-int-red.log`):
+
+```
+     × 관리자: 200, 머리글, BOM, 행 순서(신청 시각 → ID), 취소 포함·상태 라벨, 다른 회차 제외, 수식 주입 방어, 작업 기록 1건 82ms
+     × 신청이 없는 회차는 머리글 한 줄과 rowCount 0 기록 13ms
+     × 거부: 익명 403, cross-site 403, 형식 오류·없는 회차 404 — CSV 본문도 작업 기록도 없다 23ms
+     × 작업 기록이 실패하면 500 INTERNAL_ERROR이고 CSV가 없으며, 로그에 개인정보가 없다 24ms
+Error: Not implemented.
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+```
+
+RED 3 — E2E(엔드포인트 미등록, `pnpm exec playwright test tests/e2e/participants-csv.spec.ts`, 종료 코드 1, `m4-e2e-red.log`):
+
+```
+  x  1 [chromium] › tests\e2e\participants-csv.spec.ts:93:3 › 참가자 CSV 내려받기(AC-ADMIN-011) › 거부: 익명·cross-site 403, 형식 오류·없는 회차 404 — CSV 본문이 없다 (158ms)
+    Expected: 403
+    Received: 404
+  1 failed
+```
+
+(파일이 `serial` 모드라 첫 실패 뒤 나머지 2건은 실행되지 않았다.)
+
+GREEN — 단위 + 통합 같은 명령: 종료 코드 0, `Test Files 2 passed (2)`, `Tests 31 passed (31)`(`m4-green.log`). E2E 같은 명령: 종료 코드 0, `3 passed (12.9s)`(`m4-e2e-green.log`).
+
+REFACTOR — 경로 값 → ID 규칙(1~2147483647, 앞자리 0·부호·소수점 거부)을 `src/lib/route-id.ts` `parseRouteId`로 옮겨 요청 사항 삭제와 CSV가 함께 쓴다(`clear-requests.ts`의 같은 내용 함수·상수 삭제). 기존 요청 사항 삭제 시험(`clear-requests.spec.ts`의 `abc`·`0`·`-1`·`2147483648`·`1.5`·빈 값 → `NOT_FOUND`)이 전체 실행에서 그대로 통과했다.
+
+M4 완료 검증(HEAD `e443bb1` + M4 작업 트리 변경, 아래 순서대로 실행):
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `pnpm generate:types` | 0 | `payload-types.ts` 변경 없음(엔드포인트는 타입을 만들지 않음) | `m4-gentypes.log` |
+| `pnpm generate:importmap` | 0 | `importMap.js` 변경 없음(`git status --short`에 없음) | `m4-importmap.log` |
+| `pnpm typecheck` | 0 | `$ tsc --noEmit`, 오류 없음 | — |
+| `pnpm lint` | 0 | `$ eslint src tests scripts *.ts *.mjs *.mts`, 출력 없음 | — |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!`(첫 실행은 새 시험 파일 2개 서식 지적 → `prettier --write` 뒤 재실행) | `m4-format.log` |
+| `pnpm test` | 0 | `Test Files 37 passed (37)`, `Tests 596 passed (596)`(M3 565 → +31), 라인 커버리지 99.31%, `participants-csv.ts` 라인·분기 100%, `participants-csv-endpoint.ts` 라인 100%·분기 90%, `route-id.ts` 라인 100%·분기 87.5% | `m4-test-final.log` |
+| `pnpm e2e` | 0 | `56 passed (1.4m)`(M3 53 → +3) | `m4-e2e-final.log` |
+| `git diff --stat a8cf60b -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml src/lib/submit-application.ts src/lib/occupancy.ts` | 0 | 출력 없음(보존 파일 불변). `TourSessions.ts`는 엔드포인트 등록 2줄 + import 1줄만(plan.md §D 허용 범위) | — |
+
+AC 상태(M4 범위):
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-ADMIN-010 | PASS | `tests/unit/participants-csv.spec.ts` 27건: BOM(`0xFEFF`)으로 시작, 첫 줄 정확히 `"접수번호","이름","연락처","이메일","인원","상태","요청 사항"`, 모든 줄 CRLF(CR 없는 LF 줄 끝 없음), 행 없으면 BOM + 머리글 한 줄. `pending`·`confirmed`·`cancelled` → `"대기"`·`"확정"`·`"취소"`, 인원 `2` → `"2"`, 요청 사항 `null`·`''`·없음 → `""`. `a"b` → `"a""b"`, 쉼표·`\n`·`\r\n`이 든 값은 따옴표 안에 그대로. `=1+1`·`+82 10-1234-5678`·`-5`·`@SUM(A1)`·`\t=1`·`\r=1` 앞에 `'`(예: `"'=1+1"`) — 더해 `\n=1`·`＝1+1`·`＋82`·`－5`·`＠SUM(A1)`·`=HYPERLINK("x")`도. `김=민지`·`010-1234-5678`·`01012345678`·`'=…`·` =…`·`a,=b`·빈 값은 그대로. 다섯 글자 열 모두에 같은 규칙. 테스트 안 RFC 4180 해석기로 다시 나누면 행 수 = 입력 4 + 1, 각 칸 = (붙인 `'`를 뺀) 원래 값. 파일 이름 `session-42-participants.csv` |
+| AC-ADMIN-011 (E2E) | PASS | `tests/e2e/participants-csv.spec.ts` 3건: 관리자 `GET /api/tour-sessions/<S>/participants-csv` → 200, `content-type`이 `text/csv`로 시작하고 `charset=utf-8`, `content-disposition` 정확히 `attachment; filename="session-<S>-participants.csv"`, `cache-control`에 `no-store`. 본문 바이트 `EF BB BF`로 시작, 줄 4개, 2~4번째 줄이 A·B·C 순서이고 상태 칸 `대기`·`취소`·`확정`, C의 요청 사항 칸이 `"'=HYPERLINK(""x"")<표식>"`, D의 이메일 없음. 요청 URL과 `content-disposition`에 A의 이름·이메일·연락처·표식 없음. 익명 → 403 `{"code":"FORBIDDEN"}`, 관리자 + `Sec-Fetch-Site: cross-site` → 403, `2147483000`·`abc` → 404 `{"code":"NOT_FOUND"}`, 네 응답 모두 A의 이메일 없음·`content-disposition` 없음. 로컬 API로 S의 `session.participants_csv` 기록 정확히 1건, `actorId` = 로그인 응답의 테스트 관리자 ID, `sessionId` = S, `rowCount` = 3 |
+| AC-ADMIN-011 (통합 보강) | PASS | `tests/integration/participants-csv.spec.ts` 4건(처리 함수 직접 호출): 신청 시각을 SQL로 고쳐 `c`(이른 시각) → `a`·`b`(같은 시각, ID 순) 순서 확인(D7), 연락처 `+82 …` → `"'+82 10-1234-5678"`, `X-Content-Type-Options: nosniff`, 기록 1건(`applicationId` 없음, 기록 JSON에 표식 없음). 신청 없는 회차 → 머리글 한 줄, `rowCount` 0. 거부: 익명·cross-site 403, `2147483000`·`abc`·`0`·`-1`·`2147483648`·`1.5`·`01`·빈 값 404, 모두 `Cache-Control`에 `no-store`, 기록 0건. `Sec-Fetch-Site` `same-origin`·`same-site`·`none`은 200 → 기록 3건 |
+| REQ-ADMIN-013 (CSV 기록 실패) | PASS | 같은 통합 파일: `admin-audit-logs` 생성을 실패시킨 상태(`vi.spyOn(payload, 'create')`, 오류 문구에 이메일을 일부러 넣음) → 500 `{"code":"INTERNAL_ERROR"}`, `content-disposition` 없음, 본문에 이메일 없음. `payload.logger.error` 호출 1회 이상, 기록 내용에 `INTERNAL_ERROR` 있음, 이메일·이름·연락처·요청 사항 표식 없음(처리 함수는 코드·오류 종류 이름·회차 ID만 기록). 기록 0건 |
+
+데이터 정리(`pnpm test`·`pnpm e2e` 뒤, Node `pg`로 실행, `.env` 값 출력 없음):
+
+```
+audit_orphans=0  audit_total=0  applications_example_test=1  tours_test_slug=0  users_example_test=0
+```
+
+- `applications_example_test=1`은 M1 기준값과 같은 개발 신청 `SB-4KJFS-26FAM`(id 2033)이다. `users_example_test`는 E2E 준비 단계의 테스트 관리자(`e2e…`)를 뺀 수다.
+
+M4 구현 메모:
+
+- 생성: `src/lib/participants-csv.ts`(순수 함수 `csvCell`·`buildParticipantsCsv`·`participantsCsvFilename`, 머리글·상태 라벨 상수), `src/lib/participants-csv-endpoint.ts`(`handleParticipantsCsv`·`participantsCsvEndpoint` `GET /:id/participants-csv` — 관리자 → cross-site → ID → 회차 존재(`count`, `overrideAccess: false`) → 신청 `find`(`sort: ['createdAt', 'id']`, `overrideAccess: false`) → 작업 기록 → CSV; 기록·조회 실패는 500), `src/lib/route-id.ts`, 시험 3개(`tests/unit/participants-csv.spec.ts` 27건, `tests/integration/participants-csv.spec.ts` 4건, `tests/e2e/participants-csv.spec.ts` 3건)
+- 수정: `src/collections/TourSessions.ts`(엔드포인트 등록만), `src/lib/clear-requests.ts`(`parseRouteId` 사용), `src/lib/admin-audit.ts`(`recordAdminAction`에 `@MX:ANCHOR` + `@MX:REASON` — 호출자 3곳이 됨. plan.md M6 항목을 앞당김)
+- 응답 머리글: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="session-<id>-participants.csv"`, `Cache-Control: no-store, private`, `X-Content-Type-Options: nosniff`. 오류 응답도 `Cache-Control: no-store, private`
+- `Sec-Fetch-Site`가 없는 요청(브라우저가 아닌 클라이언트)은 인증만으로 판정한다. 쿠키 인증의 교차 사이트 차단은 Payload `csrf` 허용 목록이 맡는다(목록이 빈 설정은 배포 SPEC 확인 항목, plan.md R9)
+- 작업 기록은 엔드포인트의 `req`로 남긴다(엔드포인트에는 트랜잭션이 없어 `create`가 자기 트랜잭션으로 커밋한 뒤 응답한다 — "응답 전에 저장")
+- 잔여 위험(R7): 전각 외의 다른 유니코드 변형(예: 다른 언어의 등호 모양 문자)이나 엑셀 외 프로그램의 해석 차이는 다루지 않는다. OWASP도 "보편적인 방법은 없다"고 적는다. 하이픈 없는 연락처의 앞자리 0 표시 문제(R8)는 그대로다
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

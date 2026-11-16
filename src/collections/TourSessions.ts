@@ -2,6 +2,7 @@ import { APIError, type CollectionConfig, type DateFieldValidation, type NumberF
 import { date, number } from 'payload/shared'
 
 import { adminOnly, tourSessionsReadAccess } from '../lib/access'
+import { participantsCsvEndpoint } from '../lib/participants-csv-endpoint'
 import { isEndAfterStart, isPositiveInteger } from '../lib/validation'
 
 // REQ-APPLY-004 / AC-APPLY-004가 고정 문자열로 확인하는 영문 안내(language.yaml error_messages: en)
@@ -41,6 +42,8 @@ export const TourSessions: CollectionConfig = {
     update: adminOnly,
     delete: adminOnly,
   },
+  // SPEC-ADMIN-001 REQ-ADMIN-009: 관리자 전용 참가자 CSV 내려받기(GET /api/tour-sessions/:id/participants-csv)
+  endpoints: [participantsCsvEndpoint],
   hooks: {
     // @MX:NOTE: [AUTO] 가정 A6·A7(SPEC-APPLY-001) — 신청이 연결된 회차는 관리자도 지울 수 없다. 회차가 사라지면
     // 신청의 보관 기준일(회차 종료 일시)과 정원 기록이 사라진다. 정리는 신청 → 회차 → 투어 순서(plan.md §B.9)

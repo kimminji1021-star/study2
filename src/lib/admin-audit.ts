@@ -27,6 +27,9 @@ export type AdminAuditEntry = {
   rowCount?: number
 }
 
+// @MX:ANCHOR: [AUTO] 관리자 작업 기록의 단일 저장 지점 — 상태 변경(application-status.ts), 요청 사항 삭제(clear-requests.ts),
+// 참가자 CSV(participants-csv-endpoint.ts)가 모두 이 함수로 기록한다
+// @MX:REASON: 개인정보 없는 필드만 옮기는 규칙(REQ-ADMIN-015)과 관리자 ID 판정이 여기 한곳에 있어야 경로마다 어긋나지 않는다
 /**
  * 작업 기록 1건을 남긴다. 접근 규칙(생성 거부)을 건너뛰어(overrideAccess: true) 받은 req로 저장하므로
  * 호출한 작업과 같은 트랜잭션에 묶인다. 관리자 ID는 req의 사용자가 관리자일 때만 채우고, 아니면 비운다.
