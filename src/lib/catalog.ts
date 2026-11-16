@@ -44,7 +44,8 @@ export type CatalogOptions = { now?: Date }
 // @MX:REASON: 이 계층의 모든 payload.find는 이 값을 펼쳐 넘기고 user·req를 넘기지 않는다(plan.md R1). 호출자는 접근 옵션을 넘길 수 없다
 const ANONYMOUS_READ = { overrideAccess: false } as const
 
-function toImage(heroImage: Tour['heroImage']): CatalogImage | null {
+// 홈 화면 데이터(src/lib/home-page.ts)도 대표 사진을 같은 규칙으로 바꾼다(SPEC-LANDING-001 plan.md §B.3)
+export function toImage(heroImage: Tour['heroImage']): CatalogImage | null {
   // depth 1로 채운 문서만 이미지로 쓴다. 익명 읽기 규칙에 막힌 이미지는 ID(숫자)로만 남는다
   if (heroImage === null || heroImage === undefined || typeof heroImage === 'number') return null
   const media: Media = heroImage

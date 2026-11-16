@@ -50,7 +50,87 @@ carry_over_followups:   # 이 SPEC 범위 밖 — 후속 SPEC 후보
 
 ## §E.2 Run-phase Evidence
 
-_<pending run-phase — manager-develop>_
+### 기준선 (plan.md §C, 2026-11-16, HEAD `4eac201` = 계획 커밋, 코드는 `b8087f8`과 같음)
+
+긴 출력: `.moai/state/verify/landing-m1/baseline-*.log`(gitignore 대상).
+
+| 점검 | 명령 | 결과 |
+|---|---|---|
+| 범위 파일 변화 | `git diff --stat b8087f8 -- src tests pnpm-lock.yaml package.json` | 출력 없음 |
+| 작업 트리 | `git status --short` | 출력 없음(깨끗한 작업 트리) |
+| DB | `docker compose ps --format "{{.Service}} {{.Health}}"` | `postgres healthy` |
+| 의존성 | `pnpm install --frozen-lockfile` | 종료 0 |
+| 단위·통합 | `pnpm test` | 종료 0, `Test Files  39 passed (39)`, `Tests  609 passed (609)` |
+| E2E | `pnpm e2e` | 종료 0, `60 passed (1.3m)` |
+| 린트 | `pnpm lint` | 종료 0 |
+| 포맷 | `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| 타입 | `pnpm typecheck` | 종료 0 |
+| 원래 값 파일 | `.moai/state/verify/landing/home-settings-original.json` | 시작 전 없음(디렉터리도 없음) |
+
+### M1 — 홈 화면 설정과 미디어 공개 범위
+
+**RED** (구현 전, `npx vitest run --coverage.enabled=false tests/unit/home-page.spec.ts tests/integration/home-settings.spec.ts tests/integration/home-page.spec.ts`)
+
+1차(모듈 없음, 종료 1, `.moai/state/verify/landing-m1/red.log`):
+
+```
+ FAIL  |unit| tests/unit/home-page.spec.ts [ tests/unit/home-page.spec.ts ]
+Error: Cannot find module '../../src/lib/home-page' imported from …/tests/unit/home-page.spec.ts
+ Test Files  3 failed (3)
+      Tests  no tests
+```
+
+2차(빈 골격 — 동작 실패 확인, 종료 1, `.moai/state/verify/landing-m1/red-behavioral.log`):
+
+```
+ FAIL  |integration| tests/integration/home-settings.spec.ts > 홈 화면 설정(실제 DB)
+APIError: The global with slug home-settings can't be found.
+ FAIL  |unit| tests/unit/home-page.spec.ts > AC-LANDING-004 문구 결정 함수 > 기본 문구가 정확히 정해진 값이다
+AssertionError: expected '' to be '제주를 가장 가까이, 숨비투어' // Object.is equality
+ FAIL  |unit| tests/unit/home-page.spec.ts > AC-LANDING-007 추천 투어 자르기 > 추천 개수 상한은 6이다
+AssertionError: expected +0 to be 6 // Object.is equality
+ FAIL  |unit| tests/unit/home-page.spec.ts > AC-LANDING-005 (d) 대표 사진 변환 > 채워지지 않은 ID(숫자)·null·undefined는 null이다
+TypeError: toImage is not a function
+ FAIL  |integration| tests/integration/home-page.spec.ts > … > AC-LANDING-008 질의 수 > req 없이 부른 home-settings 조회는 정확히 1회이고 …
+Error: not implemented
+ Test Files  3 failed (3)
+      Tests  19 failed | 13 skipped (32)
+```
+
+**GREEN** (같은 명령, 종료 0, `.moai/state/verify/landing-m1/green-1.log`): `Test Files  3 passed (3)`, `Tests  32 passed (32)`
+
+**테이블·열 이름 확인** (Node `pg` 스크립트로 `information_schema.columns`·`pg_constraint` 조회 — psql 복합 명령 대신):
+
+```
+columns: ["id:integer","hero_image_id:integer","headline:character varying","intro:character varying","updated_at:timestamp with time zone","created_at:timestamp with time zone"]
+fk: [{"conname":"home_settings_hero_image_id_media_id_fk","def":"FOREIGN KEY (hero_image_id) REFERENCES media(id) ON DELETE SET NULL"}]
+```
+
+→ 테이블 `home_settings`, 열 `hero_image_id`·`headline`·`intro` — plan.md §B.1 예상과 같다. AC-LANDING-016 SQL을 고칠 필요 없음.
+
+**전역 설정 원래 값(M1 직후)**: `rows: [{"id":1,"hero_image_id":null,"headline":null,"intro":null}]` → `값 ?? null`로 맞추면 세 필드 모두 `null`. 테스트가 끝난 뒤 `.moai/state/verify/landing/home-settings-original.json` 없음(복원 확인 뒤 삭제됨).
+
+**표식 잔여(M1 테스트 뒤, 같은 스크립트)**: `tours test-%: 0`, `media test-%: 0`, `users @example.test: 0`, `home_settings test-%: 0`, `applications example.test: 1` — 남은 1건은 ID 2033(2026-11-12 생성, 사용자의 개발용 신청)이며 이 SPEC의 테스트 데이터가 아니다.
+
+**AC 상태 (M1 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-LANDING-001 | PASS | `tests/integration/home-settings.spec.ts` "AC-LANDING-001" 4개 사례(slug·라벨, 필드·형식·길이, 40/41자, 120/121자) |
+| AC-LANDING-002 (통합 부분) | PASS | 같은 파일 "AC-LANDING-002" 3개 사례. E2E·수동 부분은 M4 |
+| AC-LANDING-003 (통합 부분) | PASS | 같은 파일 "AC-LANDING-003" 1~4단계 + 익명 depth 1 채우기. E2E 파일 주소 부분은 M4. 기존 AC-TOUR-006(`catalog-access.spec.ts`) 계속 통과 |
+| AC-LANDING-005 (c) 통합 | PASS | 같은 파일 "AC-LANDING-005 (c)" — 미디어 삭제 뒤 `heroImage` null(FK `ON DELETE SET NULL`), `getHomePageData().heroImage` null |
+| AC-LANDING-005 (d) | PASS | `tests/unit/home-page.spec.ts` "AC-LANDING-005 (d)" — ID 숫자·null·url 없음 → null |
+| AC-LANDING-004 (단위 부분) | PASS | `tests/unit/home-page.spec.ts` "AC-LANDING-004". E2E 부분은 M3 |
+| AC-LANDING-007 (단위·통합 부분) | PASS | 단위 0·3·6·8개, 통합 `listPublishedTours` 앞 6개·남은 자리·비공개 제외. 빈 목록 렌더링(`renderToStaticMarkup`)과 E2E는 M3 |
+| AC-LANDING-008 | PASS | `tests/integration/home-page.spec.ts` "AC-LANDING-008" — 투어 5개(대표 이미지·회차 2개·대기 신청) 추가 전후 질의 수 같음, connect = query, `req` 없는 `home-settings` 조회 1회(`overrideAccess: false`, 사용자 없음) |
+
+**구현 메모**
+
+- `mediaReadAccess`는 익명 미디어 읽기 한 번에 `findGlobal`(depth 0, `select: { heroImage: true }`, `req` 전달)을 1회 더 부른다. 질의 수 고정 단언(AC-LANDING-008)이 이 호출을 포함한 채 통과했다(R10 해당 없음).
+- `src/app/(payload)/admin/importMap.js`: `pnpm generate:importmap` 뒤 내용 변화 없음 → 커밋하지 않음.
+- `src/payload-types.ts`: `pnpm generate:types`로 다시 만듦(`HomeSetting` 타입, `GlobalSlug`에 `home-settings`).
+- 공유 개발 DB에 `home_settings` 테이블이 개발 모드 스키마 반영(push)으로 생겼다. 이 SPEC 이전 코드로 개발 서버를 다시 시작하면 Payload가 이 테이블을 지우려 할 수 있다(사용자 확인 필요 시 경고가 뜸) — 잔여 위험.
 
 ## §E.3 Run-phase Audit-Ready Signal
 

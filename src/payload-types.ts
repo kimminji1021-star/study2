@@ -97,8 +97,12 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'home-settings': HomeSetting;
+  };
+  globalsSelect: {
+    'home-settings': HomeSettingsSelect<false> | HomeSettingsSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
@@ -512,6 +516,39 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "home-settings".
+ */
+export interface HomeSetting {
+  id: number;
+  /**
+   * 가로 2000px·1MB 안팎의 JPEG를 권합니다. 고른 사진은 누구나 볼 수 있습니다. 비워 두면 짙은 배경이 보입니다.
+   */
+  heroImage?: (number | null) | Media;
+  /**
+   * 비워 두면 '제주를 가장 가까이, 숨비투어'가 보입니다.
+   */
+  headline?: string | null;
+  /**
+   * 비워 두면 '제주의 소규모 투어와 다가오는 회차를 한눈에 확인하세요.'가 보입니다.
+   */
+  intro?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "home-settings_select".
+ */
+export interface HomeSettingsSelect<T extends boolean = true> {
+  heroImage?: T;
+  headline?: T;
+  intro?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

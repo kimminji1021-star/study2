@@ -2,7 +2,7 @@
 id: SPEC-LANDING-001
 title: "랜딩 페이지 — 관리자가 바꾸는 대표 사진·문구의 히어로, 추천 투어, 공통 머리글·바닥글, Pretendard 글꼴"
 version: "0.1.1"
-status: draft
+status: in-progress
 created: 2026-11-16
 updated: 2026-11-16
 author: study2
