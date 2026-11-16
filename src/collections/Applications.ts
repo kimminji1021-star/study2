@@ -10,6 +10,7 @@ import { email, number, text, textarea } from 'payload/shared'
 import { adminOnly, adminSingleDocOnly, denyAll, lockedField } from '../lib/access'
 import { checkEmail, checkName, checkPhone, checkRequests, isValidPartySize } from '../lib/application-input'
 import { lockApplicationForUpdate, markStatusRequest, recordStatusChange } from '../lib/application-status'
+import { clearRequestsEndpoint } from '../lib/clear-requests'
 import { isValidReferenceCode } from '../lib/reference-code'
 
 // Payload 기본 검증(필수 값 등)을 먼저 거친 뒤 서버 제출 경로와 같은 입력 규칙을 덧붙인다(plan.md §B.6).
@@ -83,6 +84,8 @@ export const Applications: CollectionConfig = {
     beforeChange: [lockApplicationForUpdate],
     afterChange: [recordStatusChange],
   },
+  // 요청 사항 삭제(REQ-ADMIN-008): POST /api/applications/:id/clear-requests — 관리자 확인·트랜잭션은 처리 함수가 직접 한다
+  endpoints: [clearRequestsEndpoint],
   fields: [
     {
       name: 'session',
@@ -107,6 +110,15 @@ export const Applications: CollectionConfig = {
       access: lockedField,
     },
     { name: 'requests', label: '요청 사항', type: 'textarea', validate: validateRequests, access: lockedField },
+    // 요청 사항 바로 아래의 "요청 사항 삭제" 버튼(plan.md §B.4). 값을 저장하지 않는 화면 전용 필드라 수정 잠금 대상이 아니다
+    {
+      name: 'clearRequests',
+      type: 'ui',
+      admin: {
+        components: { Field: '/components/admin/ClearRequestsField#ClearRequestsField' },
+        disableListColumn: true,
+      },
+    },
     // 요청 사항 삭제 일시(SPEC-ADMIN-001 REQ-ADMIN-008). 관리자 전용 삭제 동작만 서버 코드로 채운다
     { name: 'requestsDeletedAt', label: '요청 사항 삭제 일시', type: 'date', access: lockedField },
     // 관리자가 바꿀 수 있는 유일한 필드(REQ-ADMIN-002)

@@ -34,6 +34,8 @@ type ApplicationOpState = {
   statusRequested?: boolean
   /** beforeChange가 정한 이전·이후 상태 — afterChange가 작업 기록을 남기고 항목을 지운다 */
   statusChange?: StatusChange
+  /** 요청 사항 삭제 표시(처리 시각 ISO). 요청 사항 삭제 처리 함수(clear-requests.ts)가 같은 req로 남기고 beforeChange 6번이 읽고 지운다 */
+  clearRequestsAt?: string
 }
 
 type AdminOpsContext = { applications: Record<string, ApplicationOpState> }
@@ -66,6 +68,24 @@ function opState(req: PayloadRequest, key: string): ApplicationOpState {
   const states = opStates(req)
   states[key] ??= {}
   return states[key]
+}
+
+/**
+ * 요청 사항 삭제 표시를 남긴다(plan.md §B.4). 이어지는 같은 req의 수정에서 beforeChange 6번이 잠근 뒤 값으로
+ * "비어 있는지"를 판단하고 요청 사항을 비운다. 표시는 그 수정이 읽는 즉시 지워진다.
+ */
+export function markRequestsClear(req: PayloadRequest, applicationId: number, at: string): void {
+  opState(req, String(applicationId)).clearRequestsAt = at
+}
+
+/** 남은 요청 사항 삭제 표시를 지운다(수정이 6번에 닿기 전에 실패한 경우의 뒷정리). */
+export function unmarkRequestsClear(req: PayloadRequest, applicationId: number): void {
+  delete opStates(req)[String(applicationId)]?.clearRequestsAt
+}
+
+/** 이 모듈이 던진 신청 수정 오류이면 그 코드를, 아니면 null을 돌려준다(요청 사항 삭제 엔드포인트의 결과 코드 변환용). */
+export function applicationUpdateErrorCode(err: unknown): ApplicationUpdateErrorCode | null {
+  return err instanceof ApplicationUpdateError ? err.code : null
 }
 
 function toId(value: unknown): number | null {
@@ -128,7 +148,7 @@ export const markStatusRequest: CollectionBeforeOperationHook = ({ args, operati
 // @MX:REASON: 신청 행을 먼저 잠그는 경로가 하나라도 생기면 사이트 접수·다른 수정과 교착하고(plan.md R3), 덮어쓰기를 건너뛰는
 //   분기가 있으면 잠금 전 문서 값이 다른 탭의 취소·요청 사항 삭제를 되돌린다(R1·R15). 풀 연결을 새로 얻는 질의는 풀 고갈로 멈춘다(R2)
 /**
- * beforeChange(plan.md §B.2 1~12번, 요청 사항 삭제 분기 6번은 M3): 잠근 뒤 다시 읽은 현재 값으로 판단하고 저장 값을 정한다.
+ * beforeChange(plan.md §B.2 1~12번): 잠근 뒤 다시 읽은 현재 값으로 판단하고 저장 값을 정한다.
  * 생성(사이트 접수)은 건드리지 않는다 — 그 경로는 submit-application.ts의 정원 확인 구간이 맡는다.
  */
 export const lockApplicationForUpdate: CollectionBeforeChangeHook = async ({ data, operation, originalDoc, req }) => {
@@ -175,11 +195,23 @@ export const lockApplicationForUpdate: CollectionBeforeChangeHook = async ({ dat
     data.cancelledAt = msToIso(current.cancelled_at_ms)
     const state = opState(req, key)
     delete state.statusChange
-    if (state.statusRequested !== true || !APPLICATION_STATUSES.includes(String(data.status))) {
-      // 상태 변경 요청이 아니면 잠금 뒤 상태를 저장한다(다른 탭이 바꾼 상태를 되돌리지 않음). 알 수 없는 값은 필드 검증이 거부한다
-      if (state.statusRequested !== true) data.status = previous
+    // 상태 변경 요청이 아니면 잠금 뒤 상태를 저장한다(다른 탭이 바꾼 상태를 되돌리지 않음)
+    if (state.statusRequested !== true) data.status = previous
+
+    // 6. 요청 사항 삭제 표시(같은 req의 clear-requests.ts가 남김): 잠근 뒤 읽은 요청 사항으로 판단하고, 상태는 5번 그대로 둔다.
+    //    표시는 읽는 즉시 지운다 — 같은 req로 같은 신청을 다시 수정해도 삭제가 다시 적용되지 않게(N6)
+    const clearAt = state.clearRequestsAt
+    if (clearAt !== undefined) {
+      delete state.clearRequestsAt
+      const requests = current.requests as string | null
+      if (requests === null || requests === '') throw new ApplicationUpdateError('REQUESTS_EMPTY')
+      data.requests = null
+      data.requestsDeletedAt = clearAt
       return data
     }
+
+    // 알 수 없는 상태 값은 필드 검증이 거부한다
+    if (state.statusRequested !== true || !APPLICATION_STATUSES.includes(String(data.status))) return data
 
     // 7·8. 같은 상태 저장은 기록 없이 끝(cancelledAt은 5번의 현재 값 그대로)
     const requested = data.status as ApplicationStatus

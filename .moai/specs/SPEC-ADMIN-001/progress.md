@@ -225,6 +225,124 @@ M2 구현 메모:
 
 **계획 전제와 다른 점(manager-spec 확인 필요)**: 실제 DB의 `applications.session_id`는 `NOT NULL`이다(`information_schema.columns.is_nullable = 'NO'`, 외래 키는 `ON DELETE SET NULL`). 따라서 SPEC-APPLY-001 F1 경합에서 회차를 지우면 신청의 회차가 비는 것이 아니라 삭제가 NOT NULL 위반(23502)으로 실패할 것으로 보이며, "회차 없는 신청"은 지금 스키마에서 커밋될 수 없다. AC-ADMIN-005의 "원시 SQL로 `session_id`를 `NULL`로 바꾼다"도 그대로는 실행되지 않으므로, 시험은 테스트 트랜잭션 안에서만 `ALTER TABLE applications ALTER COLUMN session_id DROP NOT NULL` → `UPDATE … SET session_id = NULL` → 같은 트랜잭션의 `req`로 수정 시도 → 되돌림으로 재현한다(`lock_timeout` 3초, 시험 뒤 `is_nullable = 'NO'` 그대로 확인). `SESSION_MISSING` 분기는 방어 코드로 유지한다. `spec.md` §2.5·§5, `plan.md` §A.2·§B.2 3번·R24, `acceptance.md` AC-ADMIN-005의 문구와 F1 이월 항목의 설명을 이 사실에 맞게 고칠지 manager-spec이 판단할 일이다(run 단계는 본문을 고치지 않는다).
 
+### M3 — 관리자 상세 화면과 요청 사항 삭제
+
+실행 위치: 격리 작업 트리(기준 HEAD `5482520` = M2 병합), 셸 Git Bash, DB는 같은 공유 PostgreSQL. 로그·스크린숏은 `.moai/state/verify/admin-m3/`(gitignore 대상). `moai-domain-frontend` 스킬은 이 환경에 없어 불러오지 못했다(Payload `@payloadcms/ui` 3.93.0 설치본을 직접 읽어 구성 요소를 정함).
+
+RED 1 — 통합(처리 함수 자리표시만 둔 상태, `pnpm exec vitest run tests/integration/clear-requests.spec.ts --coverage.enabled=false`, 종료 코드 1, `m3-red.log`):
+
+```
+       × 익명 FORBIDDEN, 없는 ID·형식 오류 NOT_FOUND, 빈 요청 사항 REQUESTS_EMPTY — 아무것도 바뀌지 않고 기록도 없다
+       × 관리자 삭제는 cleared이고 요청 사항만 비우며 삭제 일시를 남긴다. 두 번째는 REQUESTS_EMPTY이고 아무것도 바뀌지 않는다
+       × 원자성: 작업 기록 생성이 실패하면 INTERNAL_ERROR이고 요청 사항·삭제 일시가 그대로다
+       × 잠금 대기 초과: 회차 행이 잡혀 있으면 7초 안에 SESSION_BUSY이고 아무것도 바뀌지 않는다
+       × 같은 상태 저장이 삭제 전 문서로 진행돼도 요청 사항이 되살아나지 않는다(G) 60014ms
+       × 상태 없는 수정(이름)이 삭제 전 문서로 진행돼도 요청 사항이 되살아나지 않고 이름·상태가 그대로다(H) 60012ms
+     × AC-ADMIN-005: 회차 없는 신청의 요청 사항 삭제는 SESSION_MISSING이고 아무것도 바뀌지 않으며 기록이 없다(O2)
+       × 결정적 사례: 회차 행이 잡힌 동안 둘 다 잠금을 기다리고, 풀리면 교착 없이 둘 다 성공한다(K)
+         × 취소와 요청 사항 삭제를 함께 시작하면 … (반복 1·2·3)
+Error: Not implemented.
+Error: Test timed out in 60000ms.
+ Test Files  1 failed (1)
+      Tests  11 failed | 1 passed (12)
+```
+
+(G·H의 60초 시간 초과는 자리표시가 주입 지점에 닿기 전에 던졌기 때문이다. 이후 시험이 "삭제가 주입 지점 전에 끝나면 바로 실패"하도록 고쳤다. 통과한 1건은 "관리자 일반 수정으로는 글이 안 바뀜" — M1·M2 동작이다.)
+
+GREEN 1 — 같은 명령, 종료 코드 0(`m3-green-1.log`): `Tests 12 passed (12)`.
+
+RED 2 — 저장소 규칙(`type: 'ui'` 필드를 더한 뒤): `AssertionError: expected [ 'clearRequests', 'status' ] to deeply equal [ 'status' ]`. 규칙 테스트를 "이름 있는 **데이터** 필드"로 좁히고 화면 전용 필드가 정확히 `clearRequests` 하나임을 함께 단언했다(값을 저장하지 않아 수정 잠금 대상이 아님). 재실행 `Tests 2 passed`.
+
+RED 3 — E2E(엔드포인트·화면 필드 등록을 잠시 뺀 코드, `pnpm exec playwright test tests/e2e/admin-ops.spec.ts`, 종료 코드 1, `m3-e2e-red.log`):
+
+```
+  x   4 … 요청 사항 삭제 API(AC-ADMIN-008) › 익명 403 FORBIDDEN, 관리자 200 cleared, …
+    Error: expect(received).toBe(expected) // Object.is equality
+    Expected: 403
+    Received: 404
+  x   9 … 관리자 신청 화면 › 요청 사항 삭제: 확인 단계에서 취소하면 그대로, …
+    Error: expect(locator).toBeVisible() failed
+    Error: element(s) not found
+  2 failed
+  8 passed (1.3m)
+```
+
+(통과한 8건은 M1·M2가 이미 만든 동작 — GraphQL 수정, REST 409 두 종류, 작업 기록 403, 상세·목록 화면, 정원 초과 알림, 요청 사항 없는 신청의 버튼 없음 — 을 처음 E2E로 확인한 것이다.) 등록을 되돌린 뒤 같은 명령: 종료 코드 0, `10 passed (45.4s)`(`m3-e2e-green.log`).
+
+M3 완료 검증(HEAD `5482520` + M3 작업 트리 변경, 아래 순서대로 실행):
+
+| 명령 | 종료 코드 | 결과 | 로그 |
+|---|---|---|---|
+| `pnpm generate:importmap` | 0 | `importMap.js`에 `/components/admin/ClearRequestsField#ClearRequestsField` 추가 | `m3-importmap.log` |
+| `pnpm generate:types` | 0 | `payload-types.ts` 변경 없음(`ui` 필드는 타입을 만들지 않음) | `m3-gentypes.log` |
+| `pnpm lint` | 0 | 출력 없음(`eslint src tests scripts …`) | `m3-lint.log` |
+| `pnpm typecheck` | 0 | 출력 없음(`tsc --noEmit`) | `m3-typecheck.log` |
+| `pnpm format:check` | 0 | `All matched files use Prettier code style!` | `m3-format.log` |
+| `pnpm test` | 0 | `Test Files 35 passed (35)`, `Tests 565 passed (565)` (M2 552 → +13), 라인 커버리지 99.27%, `src/lib/clear-requests.ts` 라인 100%·분기 85.36% | `m3-test-final.log` |
+| `pnpm build` | 0 | 경로 목록 출력, 오류 없음 | `m3-build.log` |
+| `pnpm e2e` | 0 | `53 passed (54.1s)` (M2 43 → +10) | `m3-e2e-final.log` |
+| `pnpm generate:types` · `pnpm generate:importmap` 재실행 뒤 `git status --short` | 0 | 생성 파일 추가 변경 없음 | `m3-gentypes-final.log`, `m3-importmap-final.log` |
+| `git diff --stat a8cf60b -- pnpm-lock.yaml .prettierignore eslint.config.mjs pnpm-workspace.yaml src/lib/submit-application.ts src/lib/occupancy.ts src/collections/TourSessions.ts` | 0 | 출력 없음(보존 파일 불변) | — |
+
+AC 상태(M3 범위):
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-ADMIN-002 (E2E GraphQL) | PASS | `tests/e2e/admin-ops.spec.ts`: 익명 `updateApplication` → `errors`에 `You are not allowed to perform this action.`, 상태 `pending` 그대로. 관리자 → 200, `errors` 없음, 돌려받은 상태 `confirmed`, 로컬 API로도 `confirmed`. AC-ADMIN-002 전체가 이제 통과(M1 REST 부분 + 이번 GraphQL) |
+| AC-ADMIN-003 (E2E) | PASS | 상세: 이름·이메일·연락처·인원·접수 번호 `not.toBeEditable`, 상태 선택지 정확히 `대기`·`확정`·`취소`, `확정` 저장 → 성공 알림, 로컬 API `confirmed`, `/apply/complete/<접수 번호>`의 `상태` `dd` 텍스트가 정확히 `확정`이고 페이지에 `대기 — 관리자 확인 후 확정` 없음. 목록: `Create New` 링크 0개, 행 선택 상자 선택 뒤 `Edit`·`Delete` 버튼 0개 |
+| AC-ADMIN-003 (수동) | 미검증 — 사람 확인 필요 | 사용자가 관리자 화면에서 직접 확인할 항목 |
+| AC-ADMIN-005 (O2 요청 사항 삭제) | PASS | `clear-requests.spec.ts`: 테스트 트랜잭션 안에서 `ALTER … DROP NOT NULL` → `session_id = NULL` → 같은 트랜잭션의 req로 삭제 → `{ status: 'error', code: 'SESSION_MISSING' }`, 되돌린 뒤 요청 사항 `<표식>-고아` 그대로, `requestsDeletedAt` 비어 있음, 회차 관계 원래 값, 기록 0건. 시험 뒤 `is_nullable = NO` 그대로(아래 정리 점검) |
+| AC-ADMIN-005 (REST 409·화면 알림) | PASS | REST: 관리자 `PATCH {"status":"pending"}`(정원 3, 대기 2 + 취소 2) → 정확히 409, `errors[0].message`가 `RESTORE_CAPACITY_EXCEEDED:`로 시작, 신청 `cancelled` 그대로. 화면: `대기` 선택 후 저장 → 오류 알림(`[data-sonner-toast][data-type="error"]`)에 `RESTORE_CAPACITY_EXCEEDED`, 신청 `cancelled` 그대로 |
+| AC-ADMIN-006 (요청 사항 삭제 ↔ 상태 변경) | PASS | 결정적 사례 K: 테스트 트랜잭션이 회차 행을 쥔 채 취소 저장 시작 → 잠금 대기 1개 이상 → 삭제 시작 → 잠금 대기 2개 이상 → 되돌려 풀어 줌 → 취소 오류 없음, 삭제 `cleared`, 최종 `cancelled`·취소일 있음·요청 사항 비어 있음·삭제 일시 있음, 기록 `status_change`(`confirmed`→`cancelled`) 1건 + `requests_delete` 1건. 병렬 3회 모두 같은 결과(`SESSION_BUSY`·`40P01` 없음). 전제(O2): 만든 직후 K를 가리키는 `payload_locked_documents_rels` 행 0(`lockedDocumentRows`) |
+| AC-ADMIN-006 (REST 409) | PASS | E2E가 `payload.db.pool.connect()` 연결로 `BEGIN` → 회차 행 `FOR UPDATE` → 관리자 `PATCH {"status":"pending"}` → 정확히 409, `SESSION_BUSY:`, 7초 안(약 5.0초), 신청 `cancelled` 그대로 → `ROLLBACK`·연결 반환 |
+| AC-ADMIN-008 (통합) | PASS | 익명 `FORBIDDEN`(요청 사항 그대로), 없는 ID `2147483000`·`abc`·`0`·`-1`·`2147483648`·`1.5`·빈 값 → `NOT_FOUND`, 빈 요청 사항 → `REQUESTS_EMPTY`, 세 경우 기록 0건. 관리자 삭제(고정 `now`) → `cleared`, 요청 사항 비어 있음, `requestsDeletedAt = now`, 동의 일시·이름·이메일·연락처·인원·상태·접수 번호 불변, 기록 1건(`application.requests_delete`, 관리자 ID, 신청·접수 번호·회차). 두 번째 → `REQUESTS_EMPTY`, 삭제 일시·기록 수 불변. 원자성(기록 생성 1회 실패) → `INTERNAL_ERROR`, 요청 사항·삭제 일시 그대로. 관리자 일반 수정 `requests: '바뀐 글'` → 오류 없음, 글 그대로. 잠금 대기 초과 → `SESSION_BUSY`, 7초 안, 값·기록 불변. 되살림 G(같은 상태 저장)·H(이름 수정): 삭제를 `beforeCommit`에서 멈춘 채 저장 시작 → 잠금 대기 1개 이상 → 풀어 줌 → 삭제 `cleared`, 저장 오류 없음, 요청 사항 비어 있음, 삭제 일시 = `now`, G 상태 `pending`·기록은 `requests_delete` 1건뿐, H 이름·상태 원래 값. 엔드포인트 처리 함수: 익명 403 `{"code":"FORBIDDEN"}`, `abc` 404, 관리자 200 `cleared`(본문에 표식 없음, `Cache-Control`에 `no-store`), 두 번째 409 `{"code":"REQUESTS_EMPTY"}` |
+| AC-ADMIN-008 (E2E) | PASS | 익명 `POST …/clear-requests` → 403 `FORBIDDEN`, 요청 사항 그대로. 관리자 → 200 `cleared`, 본문에 표식 없음. 두 번째 → 409 `REQUESTS_EMPTY`. `2147483000`·`abc` → 404 `NOT_FOUND` |
+| AC-ADMIN-008 (변이 확인) | PASS | 아래 "변이 확인" |
+| AC-ADMIN-009 | PASS | 요청 사항 입력란 `not.toBeEditable`, `요청 사항 삭제` 버튼 보임 → 누르면 확인 대화 상자(Payload `ConfirmationModal`) → `취소` → 요청 사항 그대로 → 다시 눌러 `삭제` → 버튼 사라짐, 로컬 API 요청 사항 비어 있음 → 상세 다시 열면 요청 사항 입력란 값 `''`, `요청 사항 삭제 일시` 입력란 값 있음, 버튼 없음, 페이지 HTML에 `<표식>-민감` 없음. 요청 사항 없는 신청 상세에는 버튼 없음 |
+| AC-ADMIN-015 (E2E 작업 기록 REST) | PASS | 익명·관리자 `POST`·`PATCH`·`DELETE /api/admin-audit-logs…` 각각 정확히 403, `PATCH` 뒤 값 불변, 익명 `GET` 403 또는 빈 `docs` |
+| AC-ADMIN-015 (관리자 화면 작업 기록 목록·상세 E2E, 수동, 로그 개인정보) | 미검증(M6 범위) | — |
+
+스크린숏(테스트 관리자 로그인, E2E가 찍음, gitignore 대상):
+
+- `.moai/state/verify/admin-m3/admin-detail-status-editable.png` — 상세: 다른 필드는 회색 읽기 전용, 상태 입력란만 편집 가능(`확정` 선택 상태)
+- `.moai/state/verify/admin-m3/admin-detail-clear-button.png` — 요청 사항 아래 `요청 사항 삭제` 버튼
+- `.moai/state/verify/admin-m3/admin-detail-clear-confirm.png` — 확인 대화 상자(`요청 사항을 삭제할까요?`, `취소`·`삭제`)
+- `.moai/state/verify/admin-m3/admin-detail-after-clear.png` — 삭제 뒤: 요청 사항 비어 있음, 삭제 일시 표시, 버튼 없음
+
+변이 확인(plan.md §E-1 8번, AC-ADMIN-008):
+
+- 변이: `src/lib/application-status.ts` §B.2 5번 덮어쓰기(`data.requests`·`data.requestsDeletedAt`·`data.cancelledAt`)를 `state.statusRequested === true && data.status !== previous`(상태가 바뀌는 분기)일 때만 하도록 좁힘 → `pnpm exec vitest run tests/integration/clear-requests.spec.ts --coverage.enabled=false` **1회차**에 종료 코드 1(`m3-mutation-overwrite.log`):
+  ```
+  × 같은 상태 저장이 삭제 전 문서로 진행돼도 요청 사항이 되살아나지 않는다(G)
+  × 상태 없는 수정(이름)이 삭제 전 문서로 진행돼도 요청 사항이 되살아나지 않고 이름·상태가 그대로다(H)
+  × 결정적 사례 … (K), × 병렬 사례 반복 1·2·3
+  FAIL … (G)
+  AssertionError: expected false to be true // Object.is equality
+   ❯ tests/integration/clear-requests.spec.ts:266:39
+      266|       expect(isEmpty(after.requests)).toBe(true)          (요청 사항이 되살아남)
+  AssertionError: expected null not to be null                       (K — 삭제 일시가 비워짐)
+  Tests  6 failed | 6 passed (12)
+  ```
+- 되돌린 뒤 같은 명령: 종료 코드 0, `Tests 12 passed (12)`(`m3-mutation-restored.log`). (한국어 테스트 이름으로 거르는 `-t` 인자는 작업 트리 보호 장치가 거부해 파일 전체를 실행했다.)
+
+데이터 정리(`pnpm test`·`pnpm e2e` 뒤, Node `pg`로 AC-ADMIN-016 SQL 실행, `.env` 값 출력 없음):
+
+```
+audit_orphans=0  audit_total=0  applications_example_test=1  tours_test_slug=0  users_example_test=0  session_id_not_null=NO
+```
+
+- `applications_example_test=1`은 M1 기준값과 같은 개발 신청 `SB-4KJFS-26FAM`(id 2033)이다. `applications.session_id`의 `NOT NULL`은 그대로다(회차 없는 신청 재현이 되돌려짐).
+
+M3 구현 메모:
+
+- 생성: `src/lib/clear-requests.ts`(`clearApplicationRequests` — 관리자 확인 → ID 확인(1~2147483647, 앞자리 0·부호·소수점 거부) → `initTransaction` → 잠금 없는 존재 확인 → 요청 사항 삭제 표시 → `payload.update(overrideAccess: true)` → 작업 기록 → `beforeCommit` → 커밋, 예외면 되돌림; `clearRequestsEndpoint` `POST /:id/clear-requests`), `src/components/admin/ClearRequestsField.tsx`(클라이언트 구성 요소: 요청 사항이 있을 때만 버튼, `ConfirmationModal`, 같은 출처 `fetch` POST 뒤 새로 고침), `tests/integration/clear-requests.spec.ts`(13건), `tests/e2e/admin-ops.spec.ts`(10건)
+- 수정: `src/lib/application-status.ts`(§B.2 6번 — 5번 상태 덮어쓰기 뒤, 표시가 있으면 잠근 뒤 요청 사항으로 `REQUESTS_EMPTY` 판단·비움·삭제 일시, 표시는 읽는 즉시 지움; `markRequestsClear`·`unmarkRequestsClear`·`applicationUpdateErrorCode` 내보냄), `src/lib/admin-messages.ts`(`REQUESTS_EMPTY` 문구, 화면 문구 `CLEAR_REQUESTS_UI`), `src/collections/Applications.ts`(`endpoints`, `type: 'ui'` 필드 `clearRequests` — 요청 사항 바로 아래), `src/app/(payload)/admin/importMap.js`(생성), `tests/unit/repo-rules.spec.ts`(데이터 필드로 범위 좁힘)
+- 요청 사항 삭제 함수는 신청 행을 먼저 잠그지 않는다. 잠금은 모두 보호 구간의 회차 → 신청 순서다(K 결정적 사례가 교착 없이 통과).
+- 확인 단계는 Payload `ConfirmationModal`을 썼다(브라우저 `confirm`보다 화면 시험이 쉬움).
+- 엔드포인트 응답에 `Cache-Control: no-store, private`를 붙였다.
+- AC-ADMIN-015 E2E의 작업 기록 REST 403은 M3 범위가 아니지만 같은 E2E 파일에 값싸게 더했다.
+- 남은 M3 항목 없음. 수동 확인(AC-ADMIN-003)은 사용자 몫이다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_
