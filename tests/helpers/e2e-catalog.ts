@@ -93,7 +93,7 @@ export async function createCatalogFixture(payload: Payload): Promise<CatalogFix
   }
 }
 
-/** 표식이 붙은 투어의 신청 → 회차 → 투어 → 미디어를 지운다. 준비가 중간에 실패해 일부만 만들어진 경우에도 쓸 수 있다. */
+/** 표식이 붙은 투어의 신청 → 작업 기록 → 회차 → 투어 → 미디어를 지운다. 준비가 중간에 실패해 일부만 만들어진 경우에도 쓸 수 있다. */
 export async function cleanupCatalogFixture(payload: Payload, marker: string): Promise<void> {
   const failures: unknown[] = []
   // 조건(where)으로 지우는 로컬 API는 일부 문서 실패를 예외 대신 errors 배열로 돌려주므로 둘 다 실패로 본다
@@ -117,16 +117,21 @@ export async function cleanupCatalogFixture(payload: Payload, marker: string): P
   if (tourIds.length > 0) {
     // SPEC-APPLY-001: 신청이 있는 회차는 삭제가 거부되므로(REQ-APPLY-004) 그 투어들의 회차에 속한 신청을 먼저 지운다.
     // 신청 삭제는 접근 규칙이 막으므로 로컬 API 기본값(overrideAccess: true)으로 한다. 신청이 없는 E2E에서는 삭제 대상이 0건이다
+    const sessions = await payload.find({
+      collection: 'tour-sessions',
+      where: { tour: { in: tourIds } },
+      depth: 0,
+      pagination: false,
+    })
+    const sessionIds = sessions.docs.map((session) => session.id)
     await step(async () => {
-      const sessions = await payload.find({
-        collection: 'tour-sessions',
-        where: { tour: { in: tourIds } },
-        depth: 0,
-        pagination: false,
-      })
-      const sessionIds = sessions.docs.map((session) => session.id)
       if (sessionIds.length === 0) return { errors: [] }
       return payload.delete({ collection: 'applications', where: { session: { in: sessionIds } } })
+    })
+    // SPEC-ADMIN-001: 작업 기록은 회차 ID를 숫자로 담으므로 회차를 지우기 전에 그 회차들의 기록을 지운다(AC-ADMIN-016)
+    await step(async () => {
+      if (sessionIds.length === 0) return { errors: [] }
+      return payload.delete({ collection: 'admin-audit-logs', where: { sessionId: { in: sessionIds } } })
     })
     await step(() => payload.delete({ collection: 'tour-sessions', where: { tour: { in: tourIds } } }))
     await step(() => payload.delete({ collection: 'tours', where: { id: { in: tourIds } } }))

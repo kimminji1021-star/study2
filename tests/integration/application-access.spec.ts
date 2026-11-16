@@ -1,6 +1,9 @@
 // SPEC-APPLY-001 M1 — applications·application-attempts 접근 규칙(실제 DB, Payload 로컬 API).
-// AC-APPLY-003(로컬 API 부분): 익명·관리자 모두 생성·수정·삭제 거부, 신청 읽기는 관리자만, 시도 기록은 아무도 못 읽음.
-// REST·GraphQL 부분은 M5 E2E에서, 관리자 화면 확인은 수동으로 한다.
+// AC-APPLY-003(로컬 API 부분): 익명·관리자 모두 생성·삭제 거부, 신청 읽기는 관리자만, 시도 기록은 아무도 못 읽음.
+// SPEC-ADMIN-001 M1 — AC-ADMIN-002(통합 부분)가 AC-APPLY-003의 "수정은 관리자도 거부"를 대체한다: 관리자는 신청 한 건을
+// ID로 지정해 status만 바꿀 수 있고, 다른 필드 값은 오류 없이 버려지며(필드 수정 거부 — 저장 뒤 값으로 판정, plan.md R4),
+// 일괄 수정은 관리자도 거부된다. 익명의 수정은 계속 거부된다.
+// REST·GraphQL 부분은 E2E에서, 관리자 화면 확인은 수동으로 한다.
 // 접근 규칙을 적용하려면 로컬 API에 overrideAccess: false를 꼭 넘긴다(기본값 true).
 import { randomBytes, randomUUID } from 'node:crypto'
 
@@ -9,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import config from '../../src/payload.config'
 import type { User } from '../../src/payload-types'
-import { applicationInput } from '../helpers/application-fixtures'
+import { applicationInput, testReferenceCode } from '../helpers/application-fixtures'
 import { daysFromNow, newMarker, tourInput } from '../helpers/catalog-fixtures'
 
 const marker = newMarker()
@@ -19,7 +22,13 @@ const attemptKey = randomBytes(32).toString('hex')
 let payload: Payload
 let admin: User
 
-const fixture = {} as { tourId: number; sessionId: number; applicationId: number; attemptId: number }
+const fixture = {} as {
+  tourId: number
+  sessionId: number
+  session2Id: number
+  applicationId: number
+  attemptId: number
+}
 
 const ANON = { overrideAccess: false } as const
 
@@ -56,9 +65,17 @@ describe('신청 접근 규칙(실제 DB)', () => {
       collection: 'tour-sessions',
       data: { tour: tour.id, startsAt: daysFromNow(3), endsAt: daysFromNow(3, 4), capacity: 10 } as never,
     })
+    // 다른 회차로 옮기려는 수정이 버려지는지 보려고 같은 투어에 회차를 하나 더 둔다(AC-ADMIN-002)
+    const session2 = await payload.create({
+      collection: 'tour-sessions',
+      data: { tour: tour.id, startsAt: daysFromNow(4), endsAt: daysFromNow(4, 4), capacity: 10 } as never,
+    })
     const application = await payload.create({
       collection: 'applications',
-      data: applicationInput(session.id, marker) as never,
+      data: applicationInput(session.id, marker, {
+        requests: `${marker}-요청`,
+        requestsConsentAt: new Date().toISOString(),
+      }) as never,
     })
     const attempt = await payload.create({
       collection: 'application-attempts',
@@ -67,6 +84,7 @@ describe('신청 접근 규칙(실제 DB)', () => {
     Object.assign(fixture, {
       tourId: tour.id,
       sessionId: session.id,
+      session2Id: session2.id,
       applicationId: application.id,
       attemptId: attempt.id,
     })
@@ -103,7 +121,7 @@ describe('신청 접근 규칙(실제 DB)', () => {
     it.each([
       ['익명', () => ANON],
       ['관리자', asAdmin],
-    ])('%s의 applications 생성·수정·삭제는 모두 권한 오류이고 문서 수와 값이 그대로다', async (_label, context) => {
+    ])('%s의 applications 생성·삭제는 모두 권한 오류이고 문서 수와 값이 그대로다', async (_label, context) => {
       const before = await snapshot()
       const email = `${marker}-denied@example.test`
 
@@ -115,14 +133,6 @@ describe('신청 접근 규칙(실제 DB)', () => {
         }),
       ).rejects.toBeInstanceOf(Forbidden)
       await expect(
-        payload.update({
-          collection: 'applications',
-          id: fixture.applicationId,
-          data: { status: 'confirmed' },
-          ...context(),
-        }),
-      ).rejects.toBeInstanceOf(Forbidden)
-      await expect(
         payload.delete({ collection: 'applications', id: fixture.applicationId, ...context() }),
       ).rejects.toBeInstanceOf(Forbidden)
 
@@ -130,6 +140,21 @@ describe('신청 접근 규칙(실제 DB)', () => {
       expect((await payload.count({ collection: 'applications', where: { email: { equals: email } } })).totalDocs).toBe(
         0,
       )
+    })
+
+    it('익명의 applications 상태 수정은 권한 오류이고 문서 값이 그대로다(AC-ADMIN-002)', async () => {
+      const before = await snapshot()
+
+      await expect(
+        payload.update({
+          collection: 'applications',
+          id: fixture.applicationId,
+          data: { status: 'cancelled' },
+          ...ANON,
+        }),
+      ).rejects.toBeInstanceOf(Forbidden)
+
+      expect(await snapshot()).toEqual(before)
     })
 
     it.each([
@@ -162,6 +187,94 @@ describe('신청 접근 규칙(실제 DB)', () => {
         expect(await snapshot()).toEqual(before)
       },
     )
+  })
+
+  describe('관리자 단건 수정은 status만(AC-ADMIN-002)', () => {
+    // status 외 필드 열 개 — 관리자 수정 요청에 담아 보내도 저장값이 바뀌지 않아야 한다
+    async function lockedValues() {
+      const doc = (await payload.findByID({
+        collection: 'applications',
+        id: fixture.applicationId,
+        depth: 0,
+      })) as unknown as Record<string, unknown>
+      return {
+        session: doc.session,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+        partySize: doc.partySize,
+        requests: doc.requests,
+        referenceCode: doc.referenceCode,
+        privacyPolicyVersion: doc.privacyPolicyVersion,
+        cancelledAt: doc.cancelledAt ?? null,
+        requestsDeletedAt: doc.requestsDeletedAt ?? null,
+      }
+    }
+
+    async function currentStatus() {
+      const doc = await payload.findByID({ collection: 'applications', id: fixture.applicationId, depth: 0 })
+      return doc.status
+    }
+
+    it('관리자가 신청 한 건의 상태를 확정으로 바꾸면 오류 없이 끝나고 다시 읽은 상태가 확정이다', async () => {
+      expect(await currentStatus()).toBe('pending')
+
+      await payload.update({
+        collection: 'applications',
+        id: fixture.applicationId,
+        data: { status: 'confirmed' },
+        ...asAdmin(),
+      })
+
+      expect(await currentStatus()).toBe('confirmed')
+    })
+
+    it('상태와 함께 보낸 다른 필드 열 개는 오류 없이 버려지고 상태만 바뀐다', async () => {
+      const before = await lockedValues()
+      // 대상 존재 단언: 비교할 원래 값이 실제로 채워져 있다
+      expect(before.requests).toBe(`${marker}-요청`)
+      expect(before.session).toBe(fixture.sessionId)
+
+      await payload.update({
+        collection: 'applications',
+        id: fixture.applicationId,
+        data: {
+          status: 'pending',
+          name: `${marker}-바꾼이름`,
+          email: `${marker}-x@example.test`,
+          phone: '010-9999-9999',
+          partySize: 5,
+          requests: '바뀐 글',
+          referenceCode: testReferenceCode(),
+          session: fixture.session2Id,
+          privacyPolicyVersion: 'x',
+          cancelledAt: daysFromNow(-2),
+          requestsDeletedAt: daysFromNow(-1),
+        } as never,
+        ...asAdmin(),
+      })
+
+      expect(await currentStatus()).toBe('pending')
+      const after = await lockedValues()
+      for (const key of Object.keys(before) as Array<keyof typeof before>) {
+        expect(after[key], key).toEqual(before[key])
+      }
+    })
+
+    it('관리자의 일괄 수정은 bulk edit 거부 오류로 끝나고 상태가 그대로다', async () => {
+      const before = await snapshot()
+
+      await expect(
+        payload.update({
+          collection: 'applications',
+          where: { id: { equals: fixture.applicationId } },
+          data: { status: 'cancelled' },
+          ...asAdmin(),
+        }),
+      ).rejects.toThrow('has disabled bulk edit')
+
+      expect(await snapshot()).toEqual(before)
+    })
   })
 
   describe('읽기 범위', () => {

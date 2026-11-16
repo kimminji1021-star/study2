@@ -2,7 +2,7 @@
 id: SPEC-ADMIN-001
 title: "관리자 운영 기능 — 신청 상태 변경과 취소 복원 정원 확인, 요청 사항 삭제, 회차별 참가자 CSV, 회차 현황 대시보드, 관리자 작업 기록"
 version: "0.1.2"
-status: draft
+status: in-progress
 created: 2026-11-12
 updated: 2026-11-16
 author: study2

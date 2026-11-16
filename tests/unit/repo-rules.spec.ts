@@ -815,3 +815,27 @@ describe('AC-APPLY-011 접수 번호 모듈의 난수 출처', () => {
     expect(source).not.toContain('Math.random')
   })
 })
+
+// SPEC-ADMIN-001 REQ-ADMIN-002 / plan.md §B.1 — 관리자가 바꿀 수 있는 신청 필드는 status 하나다.
+// 필드 수정 거부는 오류 없이 값을 버리므로(R4) 새 필드를 더하며 잠그는 것을 잊으면 조용히 편집 가능해진다. 그 실수를 막는다.
+describe('AC-ADMIN-002 신청 필드의 수정 잠금', () => {
+  it('applications의 이름 있는 필드 중 access.update가 없는 필드는 정확히 status 하나다', async () => {
+    const { Applications } = await import('../../src/collections/Applications')
+    const named = Applications.fields.filter(
+      (field): field is typeof field & { name: string } => 'name' in field && typeof field.name === 'string',
+    )
+    // 대상 존재 단언: 잠금 대상 필드가 실제로 여러 개 있다(requestsDeletedAt 포함)
+    expect(named.length).toBeGreaterThan(10)
+    expect(named.map((field) => field.name)).toContain('requestsDeletedAt')
+
+    const unlocked = named.filter(
+      (field) => typeof (field as { access?: { update?: unknown } }).access?.update !== 'function',
+    )
+    expect(unlocked.map((field) => field.name)).toEqual(['status'])
+  })
+
+  it('applications는 일괄 수정을 막는다(disableBulkEdit)', async () => {
+    const { Applications } = await import('../../src/collections/Applications')
+    expect(Applications.disableBulkEdit).toBe(true)
+  })
+})

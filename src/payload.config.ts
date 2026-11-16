@@ -8,6 +8,7 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { buildConfig } from 'payload'
 
+import { AdminAuditLogs } from './collections/AdminAuditLogs'
 import { ApplicationAttempts } from './collections/ApplicationAttempts'
 import { Applications } from './collections/Applications'
 import { Media } from './collections/Media'
@@ -30,8 +31,8 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  // 신청 컬렉션 두 개는 SPEC-APPLY-001에서 더했다(REQ-APPLY-002)
-  collections: [Users, Media, Tours, TourSessions, Applications, ApplicationAttempts],
+  // 신청 컬렉션 두 개는 SPEC-APPLY-001에서(REQ-APPLY-002), 작업 기록은 SPEC-ADMIN-001에서 더했다(REQ-ADMIN-001)
+  collections: [Users, Media, Tours, TourSessions, Applications, ApplicationAttempts, AdminAuditLogs],
   editor: lexicalEditor(),
   // REST 멀티파트 요청을 일찍 끊는 보조 수단(SPEC-TOUR-001 plan.md §B.6). 로컬 API에는 적용되지 않으므로
   // 5MB 판정의 근거는 media 컬렉션의 beforeOperation 훅이다. 정확히 5MB인 REST 업로드가 막히지 않게 같은 값으로 둔다.

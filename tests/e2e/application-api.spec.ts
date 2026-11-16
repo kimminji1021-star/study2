@@ -112,13 +112,14 @@ test.describe('신청 쓰기 거부(AC-APPLY-003)', () => {
     }
   })
 
-  test('익명과 관리자의 REST 수정·삭제는 각각 정확히 403이고 신청이 그대로 대기 상태다', async () => {
+  test('익명의 REST 수정과 익명·관리자의 REST 삭제는 각각 정확히 403이고 신청이 그대로 대기 상태다', async () => {
+    // SPEC-ADMIN-001 REQ-ADMIN-002: 관리자의 단건 상태 수정은 허용으로 바뀌었다(아래 테스트). 익명 수정·모든 삭제는 계속 403
+    const patch = await anonymous.patch(`/api/applications/${prepared.id}`, { data: { status: 'confirmed' } })
+    expect(patch.status(), 'anonymous PATCH').toBe(403)
     for (const [who, context] of [
       ['admin', admin],
       ['anonymous', anonymous],
     ] as const) {
-      const patch = await context.patch(`/api/applications/${prepared.id}`, { data: { status: 'confirmed' } })
-      expect(patch.status(), `${who} PATCH`).toBe(403)
       const remove = await context.delete(`/api/applications/${prepared.id}`)
       expect(remove.status(), `${who} DELETE`).toBe(403)
     }
@@ -126,5 +127,32 @@ test.describe('신청 쓰기 거부(AC-APPLY-003)', () => {
     const after = await payload.findByID({ collection: 'applications', id: prepared.id, depth: 0 })
     expect(after.status).toBe('pending')
     expect(after.email).toBe(prepared.email)
+  })
+
+  test('관리자의 REST 일괄 수정은 정확히 403이고 상태가 그대로다(SPEC-ADMIN-001 AC-ADMIN-002)', async () => {
+    const response = await admin.patch(`/api/applications?where[id][equals]=${prepared.id}`, {
+      data: { status: 'cancelled' },
+    })
+    expect(response.status()).toBe(403)
+
+    const after = await payload.findByID({ collection: 'applications', id: prepared.id, depth: 0 })
+    expect(after.status).toBe('pending')
+  })
+})
+
+test.describe('관리자 단건 상태 수정(SPEC-ADMIN-001 AC-ADMIN-002)', () => {
+  test('관리자의 REST 상태 수정은 200이고 다시 읽은 상태가 확정이며, 이름 수정은 200이지만 값이 그대로다', async () => {
+    const confirm = await admin.patch(`/api/applications/${prepared.id}`, { data: { status: 'confirmed' } })
+    expect(confirm.status()).toBe(200)
+    const read = await admin.get(`/api/applications/${prepared.id}?depth=0`)
+    expect(read.status()).toBe(200)
+    expect(((await read.json()) as { status?: string }).status).toBe('confirmed')
+
+    const before = await payload.findByID({ collection: 'applications', id: prepared.id, depth: 0 })
+    const rename = await admin.patch(`/api/applications/${prepared.id}`, { data: { name: `${marker}-바꾼이름` } })
+    expect(rename.status()).toBe(200)
+    const after = await payload.findByID({ collection: 'applications', id: prepared.id, depth: 0 })
+    expect(after.name).toBe(before.name)
+    expect(after.status).toBe('confirmed')
   })
 })

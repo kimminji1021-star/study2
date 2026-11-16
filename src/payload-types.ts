@@ -73,6 +73,7 @@ export interface Config {
     'tour-sessions': TourSession;
     applications: Application;
     'application-attempts': ApplicationAttempt;
+    'admin-audit-logs': AdminAuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -86,6 +87,7 @@ export interface Config {
     'tour-sessions': TourSessionsSelect<false> | TourSessionsSelect<true>;
     applications: ApplicationsSelect<false> | ApplicationsSelect<true>;
     'application-attempts': ApplicationAttemptsSelect<false> | ApplicationAttemptsSelect<true>;
+    'admin-audit-logs': AdminAuditLogsSelect<false> | AdminAuditLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -217,6 +219,7 @@ export interface Application {
   phone: string;
   partySize: number;
   requests?: string | null;
+  requestsDeletedAt?: string | null;
   status: 'pending' | 'confirmed' | 'cancelled';
   referenceCode: string;
   privacyConsentAt: string;
@@ -235,6 +238,24 @@ export interface ApplicationAttempt {
   id: number;
   keyHash: string;
   attemptedAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "admin-audit-logs".
+ */
+export interface AdminAuditLog {
+  id: number;
+  action: 'application.status_change' | 'application.requests_delete' | 'session.participants_csv';
+  actorId?: number | null;
+  occurredAt: string;
+  applicationId?: number | null;
+  referenceCode?: string | null;
+  sessionId?: number | null;
+  fromStatus?: ('pending' | 'confirmed' | 'cancelled') | null;
+  toStatus?: ('pending' | 'confirmed' | 'cancelled') | null;
+  rowCount?: number | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -285,6 +306,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'application-attempts';
         value: number | ApplicationAttempt;
+      } | null)
+    | ({
+        relationTo: 'admin-audit-logs';
+        value: number | AdminAuditLog;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -410,6 +435,7 @@ export interface ApplicationsSelect<T extends boolean = true> {
   phone?: T;
   partySize?: T;
   requests?: T;
+  requestsDeletedAt?: T;
   status?: T;
   referenceCode?: T;
   privacyConsentAt?: T;
@@ -427,6 +453,23 @@ export interface ApplicationsSelect<T extends boolean = true> {
 export interface ApplicationAttemptsSelect<T extends boolean = true> {
   keyHash?: T;
   attemptedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "admin-audit-logs_select".
+ */
+export interface AdminAuditLogsSelect<T extends boolean = true> {
+  action?: T;
+  actorId?: T;
+  occurredAt?: T;
+  applicationId?: T;
+  referenceCode?: T;
+  sessionId?: T;
+  fromStatus?: T;
+  toStatus?: T;
+  rowCount?: T;
   updatedAt?: T;
   createdAt?: T;
 }

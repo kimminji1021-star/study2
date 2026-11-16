@@ -95,7 +95,7 @@ export async function createTourWithSession(
   return { tourId: tour.id, sessionId: session.id }
 }
 
-/** 표식이 붙은 투어의 신청 → 회차 → 투어를 지운다(신청 삭제는 접근 규칙이 막으므로 로컬 API 기본값). */
+/** 표식이 붙은 투어의 신청 → 작업 기록 → 회차 → 투어를 지운다(신청·기록 삭제는 접근 규칙이 막으므로 로컬 API 기본값). */
 export async function cleanupMarkerData(payload: Payload, marker: string): Promise<void> {
   const tours = await payload.find({
     collection: 'tours',
@@ -120,6 +120,10 @@ export async function cleanupMarkerData(payload: Payload, marker: string): Promi
       or: [{ email: { like: marker } }, ...(sessionIds.length > 0 ? [{ session: { in: sessionIds } }] : [])],
     },
   })
+  // SPEC-ADMIN-001: 작업 기록은 회차 ID를 숫자로 담으므로 회차를 지우기 전에 그 회차들의 기록을 지운다(AC-ADMIN-016)
+  if (sessionIds.length > 0) {
+    await payload.delete({ collection: 'admin-audit-logs', where: { sessionId: { in: sessionIds } } })
+  }
   if (tourIds.length > 0) {
     await payload.delete({ collection: 'tour-sessions', where: { tour: { in: tourIds } } })
     await payload.delete({ collection: 'tours', where: { id: { in: tourIds } } })
