@@ -9,6 +9,7 @@ import { email, number, text, textarea } from 'payload/shared'
 
 import { adminOnly, adminSingleDocOnly, denyAll, lockedField } from '../lib/access'
 import { checkEmail, checkName, checkPhone, checkRequests, isValidPartySize } from '../lib/application-input'
+import { lockApplicationForUpdate, markStatusRequest, recordStatusChange } from '../lib/application-status'
 import { isValidReferenceCode } from '../lib/reference-code'
 
 // Payload 기본 검증(필수 값 등)을 먼저 거친 뒤 서버 제출 경로와 같은 입력 규칙을 덧붙인다(plan.md §B.6).
@@ -75,6 +76,13 @@ export const Applications: CollectionConfig = {
     update: adminSingleDocOnly,
     delete: denyAll,
   },
+  // 모든 신청 수정의 보호 구간(SPEC-ADMIN-001 plan.md §B.2): 원본 입력으로 상태 변경 요청을 가리고(beforeOperation),
+  // 회차 행 → 신청 행 순서로 잠근 뒤 판단·저장하며(beforeChange), 같은 트랜잭션으로 작업 기록을 남긴다(afterChange)
+  hooks: {
+    beforeOperation: [markStatusRequest],
+    beforeChange: [lockApplicationForUpdate],
+    afterChange: [recordStatusChange],
+  },
   fields: [
     {
       name: 'session',
@@ -129,7 +137,7 @@ export const Applications: CollectionConfig = {
     // 만 14세 이상 확인 일시(2026-11-12 출시 전 보완). 서버 제출 경로는 항상 채우지만, 이 필드가 생기기 전의 신청이
     // 계속 유효하도록 DB 수준 필수로 두지 않는다
     { name: 'ageConfirmedAt', label: '만 14세 이상 확인 일시', type: 'date', access: lockedField },
-    // 취소일. 상태 변경 처리(SPEC-ADMIN-001 M2)가 서버 쪽에서 채우고 비운다
+    // 취소일. 상태 변경 처리(lib/application-status.ts)가 서버 쪽에서 채우고 비운다(plan.md §B.3)
     { name: 'cancelledAt', label: '취소일', type: 'date', access: lockedField },
   ],
 }

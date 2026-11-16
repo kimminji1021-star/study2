@@ -93,7 +93,7 @@ describe('신청 접근 규칙(실제 DB)', () => {
   afterAll(async () => {
     if (payload === undefined) return
     // 한 단계가 실패해도 나머지 정리는 계속하고, 마지막에 첫 실패를 다시 던진다.
-    // 순서: 신청 시도 기록 → 신청 → 회차 → 투어 → 테스트 관리자(plan.md §B.9)
+    // 순서: 신청 시도 기록 → 신청 → 작업 기록 → 회차 → 투어 → 테스트 관리자(plan.md §B.9)
     const failures: unknown[] = []
     const step = async (run: () => Promise<unknown>) => {
       try {
@@ -104,6 +104,13 @@ describe('신청 접근 규칙(실제 DB)', () => {
     }
     await step(() => payload.delete({ collection: 'application-attempts', where: { keyHash: { equals: attemptKey } } }))
     await step(() => payload.delete({ collection: 'applications', where: { email: { like: marker } } }))
+    // SPEC-ADMIN-001 M2: 관리자 상태 변경이 남긴 작업 기록을 회차를 지우기 전에 지운다(AC-ADMIN-016 고아 기록 방지)
+    await step(() =>
+      payload.delete({
+        collection: 'admin-audit-logs',
+        where: { sessionId: { in: [fixture.sessionId, fixture.session2Id] } },
+      }),
+    )
     await step(async () => {
       const tours = await payload.find({ collection: 'tours', where: { slug: { like: marker } }, pagination: false })
       const tourIds = tours.docs.map((tour) => tour.id)
