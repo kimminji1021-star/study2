@@ -6,6 +6,15 @@
 
 ### 추가됨
 
+- **SPEC-ADMIN-001 관리자 운영 기능** (수용 기준 16개 중 자동화 부분 전부 충족 — AC-ADMIN-003·015 관리자 화면 수동 확인은 사람 확인 대기, sync 감사 PASS 92.4)
+  - 신청 상태 변경: 관리자 신청 상세에서 `status` 필드만 편집하고 나머지 필드는 읽기 전용, 일괄 작업 없음 (`src/collections/Applications.ts`, `src/lib/application-status.ts`). 대기·확정·취소 사이를 자유롭게 바꾸되, 취소를 되돌릴 때 정원을 넘으면 거부하고 되돌린 결과 정원이 차면 회차를 자동 마감. 취소해도 마감은 자동으로 풀리지 않음
+  - 동시성: 모든 신청 수정이 회차 → 신청 순서로 잠근 뒤 판단해 사이트 접수와 동시에 처리해도 정원을 넘지 않으며, 잠금 대기가 길어지면 `SESSION_BUSY`로 거부
+  - "요청 사항 삭제" 동작: 요청 사항 글 전체를 지우고 삭제 시각을 기록 (`src/lib/clear-requests.ts`, `src/components/admin/ClearRequestsField.tsx`)
+  - 회차별 참가자 CSV `/api/tour-sessions/:id/participants-csv`: 관리자 전용, 엑셀에서 바로 열리도록 UTF-8 BOM 사용, 수식 주입 무력화, URL과 파일 이름에 개인정보 없음, `no-store`로 캐시 금지 (`src/lib/participants-csv.ts`, `src/lib/participants-csv-endpoint.ts`)
+  - 관리자 첫 화면의 다가오는 회차 표: 투어·시작 일시·정원·대기·확정·남은 자리·상태를 고정된 조회 횟수로 보여 주고(N+1 없음), 비공개 투어의 회차에는 `비공개` 표시, 행마다 CSV 링크 (`src/lib/admin-dashboard.ts`, `src/components/admin/SessionDashboard.tsx`)
+  - 관리자 작업 기록: 상태 변경(이전 → 이후)·요청 사항 삭제·CSV 내려받기를 누가·언제 했는지 개인정보 없이 덧붙이기 전용으로 남기고, 관리자는 읽기만 가능 (`src/collections/AdminAuditLogs.ts`, `src/lib/admin-audit.ts`). 보관 기간은 2년으로 정했고 자동 삭제는 배포 단계에서 구현
+  - 테스트: Vitest 609건(`src` 라인 커버리지 99.34%), Playwright E2E 60건
+
 - **SPEC-APPLY-001 신청 흐름과 정원** (수용 기준 16개 중 자동화 부분 전부 충족 — AC-APPLY-003 관리자 화면 수동 확인은 사람 확인 대기, sync 감사 PASS 93.5)
   - 컬렉션 2종과 접근 규칙: 신청 `src/collections/Applications.ts`, 신청 시도 기록 `src/collections/ApplicationAttempts.ts`. 신청은 서버 액션 경로로만 만들 수 있고 관리자는 읽기만 가능하며, REST·GraphQL 쓰기 요청은 403으로 거부. 신청 시도 기록은 모든 접근을 거부하고 관리자 메뉴에서 숨김
   - 신청이 있는 회차는 삭제를 거부 (`src/collections/TourSessions.ts`)
@@ -36,6 +45,11 @@
   - 린트·포맷: ESLint(`eslint.config.mjs`), Prettier(`prettier.config.mjs`)
   - 패키지 관리: pnpm 11.28.9 고정(`package.json` `packageManager`), Node.js 버전 범위 강제(`pnpm-workspace.yaml` `engineStrict: true`)
   - 한국어 개발 환경 안내 `README.md`(설치, 실행, 테스트, 문제 해결)
+
+### 변경됨
+
+- 사용자 화면 디자인 개편 (커밋 `a8cf60b`): 투어 목록·상세·신청·접수 완료·404 화면에 새 디자인 적용. 포인트 색 청록(#00737A)은 유지하고, 본문 글자는 검은색에 가깝게, 본문 17px, 알약 모양 버튼, 카드 그림자 제거, 섹션마다 바탕 면을 번갈아 사용. 동작·문구·접근성 속성은 바꾸지 않음
+- 디자인 토큰(`src/app/(frontend)/tokens.css`, `.moai/project/design/tokens.css`)과 `.moai/project/design/handoff.md`의 디자인 방향 갱신, `.moai/project/product.md`의 로드맵 진행 순서 수정
 
 ### 보안
 

@@ -1,8 +1,8 @@
 ---
 id: SPEC-ADMIN-001
 title: "관리자 운영 기능 — 신청 상태 변경과 취소 복원 정원 확인, 요청 사항 삭제, 회차별 참가자 CSV, 회차 현황 대시보드, 관리자 작업 기록"
-version: "0.1.2"
-status: in-progress
+version: "0.1.3"
+status: completed
 created: 2026-11-12
 updated: 2026-11-16
 author: study2
@@ -24,6 +24,7 @@ depends_on: [SPEC-APPLY-001]
 | 0.1.0 | 2026-11-12 | study2 (manager-spec) | 최초 작성 — `product.md` §7 로드맵 6번 "관리자 운영 기능". 2026-11-12 인터뷰 결정 7가지(`interview.md`)와 기존 제품 규칙(`product.md` §4·§5.2·§8.1) 반영 |
 | 0.1.1 | 2026-11-16 | study2 (manager-spec) | plan-audit 1회차(FAIL 0.78) 반영. 2026-11-16 추가 확인(자동 마감·CSV 취소 포함·대시보드 비공개 표시·작업 기록 보관 2년) 반영. 모든 신청 수정을 회차 행 → 신청 행 한 가지 순서로 잠그고 상태 변경 요청을 원본 입력으로 판별(REQ-ADMIN-006), 잠긴 필드를 모든 분기에서 잠금 뒤 값으로 저장, 요청 사항 삭제의 오류 코드 보강(REQ-ADMIN-008), 회차 없는 신청의 복원 거부(REQ-ADMIN-005), 대시보드 `비공개` 표시(REQ-ADMIN-011), 로그 요구의 범위를 이 SPEC 코드로 한정(REQ-ADMIN-015) |
 | 0.1.2 | 2026-11-16 | study2 (manager-spec) | plan-audit 2회차(FAIL 0.82) 반영. 새 REQ·AC 없이 기존 항목만 고침. N2: 회차 없는 신청은 `session` 필드가 필수라 어떤 수정도 저장할 수 없으므로, 그 신청의 모든 수정(상태 변경·복원·요청 사항 삭제)을 `SESSION_MISSING`(409)으로 거부(REQ-ADMIN-005·006·008, AC-ADMIN-005), 그 신청의 요청 사항 삭제는 F1 해결 때로 미룸. N1: 복원 자동 마감을 트랜잭션 연결의 원시 SQL로 하고, "순환 대기 없음" 주장을 신청·회차 행 사이로 좁힘(§4). N3~N6 문구 보완 |
+| 0.1.3 | 2026-11-16 | study2 (manager-spec) | sync 단계 문서 이월 반영. 새 REQ·AC 없음(16/16 유지), 동작 변경 없음. 실제 DB의 `applications.session_id`가 `NOT NULL`(외래 키 `ON DELETE SET NULL`)이라 회차 없는 신청은 지금 커밋될 수 없음을 반영해 `SESSION_MISSING`을 방어 처리로 고쳐 씀(§2.5·§5 F1, `plan.md` §A.2·§B.2 3번·R24, AC-ADMIN-005). O1: REQ-ADMIN-002에 REQ-ADMIN-005 거부 교차 참조. O3: `plan.md` §B.2 3번에 회차 `FOR UPDATE` 0행 → `SESSION_MISSING`. sync-audit 선택 지적 F1~F4를 `plan.md` §G 알려진 한계(R27~R30)로 기록 |
 
 ## 1. 개요
 
@@ -84,7 +85,7 @@ Tier는 M으로 정한다. 신청 운영이라는 한 도메인이고 프로젝�
 - **상태 변경 요청**: 수정 요청의 원본 데이터(Payload가 필드를 처리하기 전, 요청 본문·로컬 API `data`에 들어온 그대로의 객체)에 `status` 키가 있는 `applications` 수정. 관리자 화면 저장은 상태 입력란을 함께 보내므로 상태 변경 요청이다. Payload가 저장 직전에 채워 넣은 `status`는 판별에 쓰지 않는다.
 - **상태 변경**: 상태 변경 요청 중 요청한 값이 잠금 뒤 다시 읽은 현재 상태와 다른 것. 값이 같으면 상태 변경이 아니다.
 - **잠긴 필드**: `applications`에서 `status`를 뺀 모든 필드. 접근 규칙을 적용하는 경로로는 바꿀 수 없고, 서버 코드만 정해진 동작(취소일 처리, 요청 사항 삭제)으로 바꾼다.
-- **회차 없는 신청**: 회차 관계가 비어 있는 신청(SPEC-APPLY-001 지적 F1의 `ON DELETE SET NULL` 결과로만 생김). `session` 필드가 필수라 Payload 필드 검증이 그 신청의 어떤 저장도 받지 않으므로, 이 SPEC은 그 신청의 모든 수정을 먼저 거부한다(REQ-ADMIN-005, `plan.md` §A.2).
+- **회차 없는 신청**: 회차 관계가 비어 있는 신청. 실제 DB의 `applications.session_id`는 `NOT NULL`이고 외래 키는 `ON DELETE SET NULL`이라, 신청이 있는 회차를 지우면 회차 값이 비는 대신 삭제가 NOT NULL 위반(23502)으로 먼저 실패한다. 따라서 지금 스키마에서는 회차 없는 신청이 커밋될 수 없고, 실행 중에 도달하는 상태가 아니다. 그래도 스키마가 바뀌는 경우(F1 해결 등)에 대비해, 이 SPEC은 그 신청의 모든 수정을 먼저 거부하는 방어 처리를 둔다(REQ-ADMIN-005, `plan.md` §A.2 — `session` 필드가 필수라 Payload 필드 검증도 그 신청의 어떤 저장도 받지 않는다). 이 처리는 시험이 되돌리는 트랜잭션 안에서만 `NOT NULL`을 잠시 풀어 재현해 검증한다(`acceptance.md` AC-ADMIN-005).
 - **비공개 투어**: `tours`의 `published`가 거짓인 투어.
 - **취소 복원**: 상태를 취소(`cancelled`)에서 대기(`pending`) 또는 확정(`confirmed`)으로 바꾸는 상태 변경.
 - **점유 인원·남은 자리**: SPEC-APPLY-001 정의 그대로(대기·확정 신청 인원의 합계, 정원 − 점유 인원이며 0 미만이면 0).
@@ -105,7 +106,7 @@ Tier는 M으로 정한다. 신청 운영이라는 한 도메인이고 프로젝�
 ### 3.1 데이터 모델과 접근 규칙
 
 - **REQ-ADMIN-001** [Ubiquitous] Payload 설정에 등록된 컬렉션 중 시스템 컬렉션(slug가 `payload-`로 시작)을 뺀 목록은 정확히 `users`, `media`, `tours`, `tour-sessions`, `applications`, `application-attempts`, `admin-audit-logs`여야 한다. 이 요구사항은 SPEC-APPLY-001 REQ-APPLY-002의 목록을 대체한다.
-- **REQ-ADMIN-002** [State-driven + Unwanted] **While** 요청이 관리자의 것이고 신청 한 건을 ID로 지정하면, 접근 규칙을 적용하는 경로는 그 신청의 수정을 받아야 하며, 그 수정이 바꿀 수 있는 필드는 `status` 하나여야 한다. 접근 규칙을 적용하는 어떤 경로로도 `status` 외 필드(회차, 이름, 이메일, 연락처, 인원, 요청 사항, 접수 번호, 동의 기록, 취소일, 요청 사항 삭제 일시)의 저장값은 바뀌지 않아야 한다. 신청 한 건을 지정하지 않은 수정(일괄 수정)은 관리자를 포함한 모두에게 HTTP 403으로 거부되어야 한다. 관리자가 아닌 요청의 수정, 그리고 모든 요청의 생성·삭제는 SPEC-APPLY-001과 같이 거부되어야 한다. 이 요구사항은 SPEC-APPLY-001 REQ-APPLY-003의 `applications` "수정은 관리자도 거부" 부분만 대체하며, 나머지 조항(`application-attempts` 규칙, 읽기 규칙, 생성 경로)은 그대로다.
+- **REQ-ADMIN-002** [State-driven + Unwanted] **While** 요청이 관리자의 것이고 신청 한 건을 ID로 지정하면, 접근 규칙을 적용하는 경로는 그 신청의 수정을 받아야 하며(회차 없는 신청의 수정은 REQ-ADMIN-005에 따라 거부), 그 수정이 바꿀 수 있는 필드는 `status` 하나여야 한다. 접근 규칙을 적용하는 어떤 경로로도 `status` 외 필드(회차, 이름, 이메일, 연락처, 인원, 요청 사항, 접수 번호, 동의 기록, 취소일, 요청 사항 삭제 일시)의 저장값은 바뀌지 않아야 한다. 신청 한 건을 지정하지 않은 수정(일괄 수정)은 관리자를 포함한 모두에게 HTTP 403으로 거부되어야 한다. 관리자가 아닌 요청의 수정, 그리고 모든 요청의 생성·삭제는 SPEC-APPLY-001과 같이 거부되어야 한다. 이 요구사항은 SPEC-APPLY-001 REQ-APPLY-003의 `applications` "수정은 관리자도 거부" 부분만 대체하며, 나머지 조항(`application-attempts` 규칙, 읽기 규칙, 생성 경로)은 그대로다.
 - **REQ-ADMIN-003** [Event-driven] **When** 관리자가 관리자 화면에서 신청 상세를 열면, 관리자 화면은 상태를 대기·확정·취소 중에서 고르는 편집 가능한 입력란과 저장 버튼을 보여야 하고, 그 밖의 신청 필드는 편집할 수 없게 보여야 한다. 신청 목록에는 "새로 만들기"와 여러 건을 고른 뒤의 일괄 편집·일괄 삭제 동작이 없어야 한다.
 
 ### 3.2 상태 변경 규칙
@@ -166,7 +167,7 @@ Tier는 M으로 정한다. 신청 운영이라는 한 도메인이고 프로젝�
 
 ### Out of Scope — SPEC-APPLY-001에서 미룬 지적 (사용자 결정 "나중에")
 
-- F1: `TourSessions.ts` 회차 삭제 거부 검사와 첫 신청 커밋 사이의 경합(외래 키가 `ON DELETE SET NULL`이라 그 사이 삭제되면 신청의 회차가 비는 문제). 이 SPEC은 그렇게 생긴 회차 없는 신청의 모든 수정을 `SESSION_MISSING`으로 거부만 하며, 그 신청의 요청 사항(민감정보) 삭제는 F1 해결 때 다룬다
+- F1: `TourSessions.ts` 회차 삭제 거부 검사와 첫 신청 커밋 사이의 경합. 외래 키는 `ON DELETE SET NULL`이지만 실제 DB의 `applications.session_id`가 `NOT NULL`이라, 그 사이 삭제가 일어나면 신청의 회차가 비는 대신 회차 삭제가 NOT NULL 위반(23502)으로 실패한다(run 단계 확인, `progress.md` §E.2 — 계획 당시 가정과 다름). 이 SPEC의 `SESSION_MISSING` 거부는 지금 스키마에서는 도달하지 않는 방어 처리다. F1 해결 때 스키마 정의와 외래 키 동작, 회차 없는 신청이 생길 경우의 요청 사항(민감정보) 삭제, 이 SPEC 시험의 재현 방식(`plan.md` §G R29)을 함께 다시 본다
 - (사용자 결정 대상이 아닌 기록 항목 — plan-audit 2회차가 찾은 기존 경로) SPEC-APPLY-001 사이트 접수의 자동 마감(`submit-application.ts`의 중첩 `payload.update(tour-sessions)`)이 회차 행을 쥔 채 문서 잠금 행을 지우는 순서(관리자 화면의 회차 저장과 교착 가능, `plan.md` §G R26). `submit-application.ts`는 이 SPEC에서 바꾸지 않는다
 - F2: `submit-application.ts` 잠금 구간 안 `create`·`update`의 `depth: 0` 지정
 

@@ -625,10 +625,10 @@ M6 구현 메모:
 
 ```yaml
 run_complete_at: 2026-11-16
-run_commit_sha: pending-backfill-m6   # 이 M6 커밋 자신의 SHA — 다음 커밋(sync)에서 채움
+run_commit_sha: e44e4f0   # M6 커밋(sync 단계에서 기록)
 run_base_head: 344829e                 # M5 병합
 run_status: complete-pending-human     # 자동 검증 전부 통과, 사람 확인 2건 남음(아래)
-milestone_commits: [M1 6f6020c, M2 5482520, M3 e443bb1, M4 030d8a1, M5 344829e, M6 pending-backfill-m6]
+milestone_commits: [M1 6f6020c, M2 5482520, M3 e443bb1, M4 030d8a1, M5 344829e, M6 e44e4f0]
 m1_to_mN_commit_strategy: "마일스톤마다 격리 작업 트리에서 커밋 1개 → 오케스트레이터가 main에 fast-forward 병합(푸시는 오케스트레이터)"
 ac_pass_count: 16          # 자동 판정 부분 기준. 003·015는 수동 하위 항목이 PENDING-human
 ac_fail_count: 0
@@ -706,7 +706,40 @@ status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase>_
+```yaml
+sync_status: complete
+sync_complete_at: 2026-11-16
+sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+frontmatter_status_transitions:
+  spec_md: "in-progress → implemented → completed (3-phase close, sync 커밋에 합침), updated 2026-11-16"
+  spec_compact_md: "status 줄 completed로 맞춤"
+sync_audit:
+  verdict: PASS
+  score: 92.4
+  dimensions: {functionality: 90, security: 95, craft: 92, consistency: 95}
+  blocking_findings: 0
+  report: .moai/reports/sync-audit/SPEC-ADMIN-001-sync-audit.md   # 추적하지 않는 파일
+sync_evidence_head: e44e4f0
+spec_doc_carry_over: "manager-spec이 spec.md·plan.md·acceptance.md·spec-compact.md에 문서 이월(v0.1.3: session_id NOT NULL 사실, O1, O3, R27~R30) 반영 — 이 sync 커밋에 포함"
+b12_self_test:
+  a_pre_emission_grep: "grep -c 'SPEC-ADMIN-001' CHANGELOG.md → 0"
+  b_ac_count: "acceptance.md 고유 AC-ID 20개 = AC-ADMIN 16개 + 회귀 참조 AC-APPLY-003·005·016, AC-TOUR-009. CHANGELOG 항목은 16개로 기록"
+  c_path_check: "CHANGELOG가 인용한 경로 14개 ls 확인, 누락 0"
+changelog_entry_position: "[Unreleased] > 추가됨 첫 항목(SPEC-APPLY-001 위), 변경됨 새 하위 절에 디자인 개편 a8cf60b"
+carry_over:
+  manual_check:
+    - "AC-ADMIN-003 관리자 신청 상세·목록 수동 확인 — 사람 확인 대기(미실시)"
+    - "AC-ADMIN-015 관리자 작업 기록 화면 수동 확인 — 사람 확인 대기(미실시)"
+  deploy:
+    - "R23 Payload 기본 오류 기록의 질의 바인딩 값(개인정보) 처리 — 배포 SPEC"
+    - "R20 작업 기록 2년 지난 기록 자동 삭제 구현 + 법정 보관 기준 변호사 확인 — 배포 단계"
+    - "R30 운영 serverURL(NEXT_PUBLIC_SERVER_URL)·csrf 목록 설정 확인 — 배포 SPEC"
+  follow_up_spec:
+    - "F1 회차 삭제 경합 — session_id NOT NULL 스키마와 함께 재검토, 회차 없는 신청의 요청 사항 삭제 포함"
+    - "F2 submit-application.ts 잠금 구간 create/update에 depth: 0"
+    - "R26 ② 사이트 접수 자동 마감의 중첩 payload.update(tour-sessions) 교착 가능성 → 원시 SQL 마감"
+deferred_optional_findings: "sync 감사 선택 지적 F1~F6 — 코드 변경 없이 plan.md R27~R30에 알려진 한계로 기록"
+```
 
 ## plan-audit 3회차 결과 (2026-11-16)
 

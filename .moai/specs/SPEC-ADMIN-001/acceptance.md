@@ -16,7 +16,7 @@
 |---|---|---|---|
 | `RESTORE_CAPACITY_EXCEEDED` | 409 | 상태 변경 | 취소 복원이 정원을 넘음. 메시지 `RESTORE_CAPACITY_EXCEEDED: Restoring this application would exceed the session capacity.` |
 | `SESSION_BUSY` | 409 | 상태 변경, 요청 사항 삭제 | 회차 행이나 신청 행의 잠금을 5초 안에 얻지 못함(교착 감지도 같은 코드). 상태 변경은 메시지 `SESSION_BUSY: The session is being updated by another request. Try again.`, 요청 사항 삭제는 본문 `{"code":"SESSION_BUSY"}` |
-| `SESSION_MISSING` | 409 | 상태 변경(복원·그 밖의 전환·같은 상태 저장·상태 없는 수정 등 모든 수정), 요청 사항 삭제 | 회차 없는 신청의 모든 수정(`session` 필드가 필수라 어떤 수정도 저장할 수 없음, `plan.md` §A.2·§B.2 3번). 상태 변경은 메시지 `SESSION_MISSING: This application has no session, so it cannot be changed.`, 요청 사항 삭제는 본문 `{"code":"SESSION_MISSING"}` |
+| `SESSION_MISSING` | 409 | 상태 변경(복원·그 밖의 전환·같은 상태 저장·상태 없는 수정 등 모든 수정), 요청 사항 삭제 | 회차 없는 신청의 모든 수정(`session` 필드가 필수라 어떤 수정도 저장할 수 없음, `plan.md` §A.2·§B.2 3번). 실제 DB의 `session_id`가 `NOT NULL`이라 지금은 도달하지 않는 방어 처리(AC-ADMIN-005). 상태 변경은 메시지 `SESSION_MISSING: This application has no session, so it cannot be changed.`, 요청 사항 삭제는 본문 `{"code":"SESSION_MISSING"}` |
 | `REQUESTS_EMPTY` | 409 | 요청 사항 삭제 | 잠근 뒤 읽은 요청 사항이 이미 비어 있음. 본문 `{"code":"REQUESTS_EMPTY"}` |
 | `FORBIDDEN` | 403 | 요청 사항 삭제, CSV | 관리자가 아님, 또는 CSV 요청의 `Sec-Fetch-Site`가 `cross-site`. 본문 `{"code":"FORBIDDEN"}` |
 | `NOT_FOUND` | 404 | 요청 사항 삭제, CSV | 식별 값이 1~2147483647 정수가 아니거나 대상이 없음. 본문 `{"code":"NOT_FOUND"}` |
@@ -93,7 +93,7 @@
   - Z를 `pending`으로 바꾸면 성공하고, S4의 점유 인원이 4이며 처리 함수가 돌아온 직후 S4가 `closed`다
   - W를 `confirmed`로 바꾸면 성공하고, U6의 점유 인원이 4이며 U6은 `closed` 그대로다
   - Q를 `pending`으로 바꾸면 잡은 오류의 `status`가 409이고 메시지가 `RESTORE_CAPACITY_EXCEEDED:`로 시작하며 Q가 `cancelled` 그대로다
-  - **회차 없는 신청**: 별도 회차의 취소 신청 O(인원 1)와 대기 신청 O2(인원 1, 요청 사항 `<표식>-고아`)를 만든 뒤 테스트가 원시 SQL로 두 신청의 `session_id`를 `NULL`로 바꾼다(SPEC-APPLY-001 F1 결과의 재현). 관리자가 O를 `pending`으로 바꾸면 잡은 오류의 `status`가 409이고 메시지가 `SESSION_MISSING:`으로 시작하며 O가 `cancelled` 그대로이고 O의 작업 기록이 0건이다. 관리자가 O2를 `cancelled`로 바꾸면 잡은 오류의 `status`가 409이고 메시지가 `SESSION_MISSING:`으로 시작하며, 다시 읽은 O2의 상태가 `pending`, `cancelledAt`이 비어 있음 그대로다. 관리자로 O2의 요청 사항 삭제 처리 함수를 부르면 결과가 `SESSION_MISSING`이고, 다시 읽은 O2의 요청 사항이 `<표식>-고아` 그대로이며 `requestsDeletedAt`이 비어 있다. 이 사례가 끝난 뒤 `applicationId`가 O 또는 O2인 작업 기록이 0건이다. 이 사례는 끝에 O·O2를 신청 ID로 지운다
+  - **회차 없는 신청(방어 처리)**: 실제 DB의 `applications.session_id`는 `NOT NULL`이라 회차 없는 신청은 커밋될 수 없으므로(`spec.md` §2.5), 이 사례는 도달하지 않는 상태에 대한 방어 처리를 검증한다. 별도 회차의 취소 신청 O(인원 1)와 대기 신청 O2(인원 1, 요청 사항 `<표식>-고아`)를 만든 뒤, 테스트가 하나의 시험 트랜잭션 안에서 `lock_timeout`을 3초로 두고 `ALTER TABLE applications ALTER COLUMN session_id DROP NOT NULL` → 그 신청의 `session_id`를 `NULL`로 바꿈 → 같은 트랜잭션의 `req`로 아래 수정 시도 → 트랜잭션 되돌림 순서로 재현한다. 아래 "다시 읽은" 값은 되돌린 뒤 읽은 값이며, 시험 뒤 `applications.session_id`의 `is_nullable`이 `NO` 그대로다. 관리자가 O를 `pending`으로 바꾸면 잡은 오류의 `status`가 409이고 메시지가 `SESSION_MISSING:`으로 시작하며 O가 `cancelled` 그대로이고 O의 작업 기록이 0건이다. 관리자가 O2를 `cancelled`로 바꾸면 잡은 오류의 `status`가 409이고 메시지가 `SESSION_MISSING:`으로 시작하며, 다시 읽은 O2의 상태가 `pending`, `cancelledAt`이 비어 있음 그대로다. 관리자로 O2의 요청 사항 삭제 처리 함수를 부르면 결과가 `SESSION_MISSING`이고, 다시 읽은 O2의 요청 사항이 `<표식>-고아` 그대로이며 `requestsDeletedAt`이 비어 있다. 이 사례가 끝난 뒤 `applicationId`가 O 또는 O2인 작업 기록이 0건이다. 이 사례는 끝에 O·O2를 신청 ID로 지운다
 - **And** E2E가 Playwright 요청 API로 관리자 `PATCH /api/applications/<정원을 넘는 취소 신청>` 본문 `{"status":"pending"}`을 보내면 응답 상태가 정확히 409이고 본문 `errors[0].message`가 `RESTORE_CAPACITY_EXCEEDED:`로 시작하며, 이어서 로컬 API로 읽은 그 신청이 `cancelled` 그대로임을 확인한다
 - **And** E2E가 관리자 화면에서 정원을 넘는 복원을 저장하면 고정 문자열 `RESTORE_CAPACITY_EXCEEDED`가 든 오류 알림이 보이고, 로컬 API로 읽은 그 신청이 `cancelled` 그대로임을 확인한다
 
