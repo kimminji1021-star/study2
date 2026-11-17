@@ -132,6 +132,112 @@ fk: [{"conname":"home_settings_hero_image_id_media_id_fk","def":"FOREIGN KEY (he
 - `src/payload-types.ts`: `pnpm generate:types`로 다시 만듦(`HomeSetting` 타입, `GlobalSlug`에 `home-settings`).
 - 공유 개발 DB에 `home_settings` 테이블이 개발 모드 스키마 반영(push)으로 생겼다. 이 SPEC 이전 코드로 개발 서버를 다시 시작하면 Payload가 이 테이블을 지우려 할 수 있다(사용자 확인 필요 시 경고가 뜸) — 잔여 위험.
 
+### M2 — 공통 머리글·바닥글·404·글꼴 (2026-11-16, 기준 HEAD `cb480c6`)
+
+긴 출력: `.moai/state/verify/landing-m2/*.log`(gitignore 대상).
+
+**글꼴 파일 (첫 작업, plan.md §B.8)**
+
+| 항목 | 값 |
+|---|---|
+| 출처 주소 | `https://github.com/orioncactus/pretendard/raw/v1.3.9/packages/pretendard/dist/web/variable/woff2/PretendardVariable.woff2` (태그 고정, `curl -sSL` → `http=200 size=2057688`) |
+| 크기 | 2,057,688바이트 (계획 값과 같음) |
+| SHA-256 | `9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4` (`sha256sum`) |
+| 파일 시그니처 | 첫 4바이트 `wOF2` |
+| 라이선스 | `https://github.com/orioncactus/pretendard/raw/v1.3.9/LICENSE` 원문 그대로 → `src/app/(frontend)/fonts/OFL.txt` (4,418바이트, SHA-256 `d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04`, CR 0개). 1행 `Copyright (c) 2021, Kil Hyung-jin (…)`, 10행 `SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007` |
+| 무게 축 | 공식 `packages/pretendard/dist/web/variable/pretendardvariable.css`(v1.3.9)의 `font-weight: 45 920` |
+| `next/font/local` 설정 | `src: './fonts/PretendardVariable.woff2'`, `weight: '45 920'`, `display: 'swap'`, `preload: false`, `variable: '--font-pretendard'`, `adjustFontFallback` 기본값(`'Arial'`). `src/app/(frontend)/layout.tsx`에서 부르고 `<html className={pretendard.variable}>` |
+| 토큰 | `--font-sans: var(--font-pretendard, "Pretendard Variable"), "Pretendard Variable", Pretendard, -apple-system, …, sans-serif` |
+
+파일은 잘라 내거나 이름을 바꾸지 않았다. 저장소 규칙 테스트가 크기·SHA-256을 상수로 단언한다.
+
+**RED** (구현 전 — 글꼴 파일만 놓은 상태)
+
+단위(`npx vitest run --coverage.enabled=false tests/unit/repo-rules.spec.ts`, 종료 1, `red-unit.log`):
+
+```
+ FAIL  |unit| tests/unit/repo-rules.spec.ts > AC-LANDING-012 Pretendard 직접 호스팅 > next/font/local을 import하는 파일이 1개 이상 있고 모두 (frontend) 아래에 있다
+AssertionError: next/font/local을 import하는 파일이 있어야 한다: expected 0 to be greater than or equal to 1
+ Test Files  1 failed (1)
+      Tests  1 failed | 68 passed (69)
+```
+
+E2E(`pnpm exec playwright test tests/e2e/layout.spec.ts tests/e2e/home.spec.ts`, `red-e2e.log`, `13 failed`, `7 passed (5.5m)`) — 발췌:
+
+```
+x   4 … AC-LANDING-009 공통 머리글 › 공개 화면 6개의 머리글은 하나이고 …
+    Error: 홈
+    Locator:  getByRole('banner')
+    Expected: 1
+    Received: 0
+x   8 … AC-LANDING-011 … › /no-such-page는 머리글·바닥글이 있는 사용자 화면 404다
+    Expected: "페이지를 찾을 수 없습니다"
+    Received: "404"
+x  13 … AC-LANDING-012 … › /는 같은 출처의 /_next/static/media/ 글꼴만 받고 …
+    Error: font 요청이 1개 이상 있어야 한다
+    Expected: >= 1
+    Received:    0
+x  16 … AC-LANDING-014 … › /의 첫 Tab은 보이는 본문 바로가기이고 …
+    Locator:  locator(':focus')
+    Expected: "본문 바로가기"
+    Received: "투어 둘러보기"
+x  19 … AC-LANDING-014 … › /에서 동작 줄이기를 켜면 모든 전환 시간이 0.01초 이하다
+    Error: 기본 설정에서 전환 시간이 0보다 큰 요소가 있어야 한다
+    Expected: >= 1
+    Received:    0
+x  20 … AC-LANDING-014 … › /tours에서 동작 줄이기를 켜면 …
+    - Array []
+    + Array [
+    +   0.15,
+```
+
+통과한 7개는 기존 `home.spec.ts` 3개(아직 머리글이 없어 깨지지 않음), `/admin` 쪽 2개, `/api/tours` 1개, 애니메이션 없음 1개다 — 모두 "바뀌면 안 되는 것"을 보는 단언이다.
+
+**GREEN** (같은 E2E 명령, 종료 0, `green-e2e.log`): `20 passed (1.0m)`. 단위 같은 명령, 종료 0, `green-unit.log`: `Tests  69 passed (69)`.
+
+**구현**
+
+- `src/components/SiteHeader.tsx`: 흰 면·아래 장식선, 링크 `숨비투어`(`/`)·`투어`(`/tours`, `nav aria-label="주요 메뉴"` 안) 두 개, 둘 다 `min-h`·`min-w` 44px. 제목 요소·버튼 없음
+- `src/components/SiteFooter.tsx`: 연회색 면(`--surface-parchment`)·위 장식선, `--text-small`·`--color-text-2`, `© 숨비투어 · 개인정보 처리방침(준비 중)` 한 줄, 링크 없음
+- `src/app/(frontend)/layout.tsx`: `next/font/local` 글꼴, `본문 바로가기`(`href="#main-content"`, 평소 화면 위로 밀어 두고 포커스 때 `translate-y-0`, 흰 면·높이 44px) → 머리글 → `<div id="main-content" tabIndex={-1} className="flex-1">` → 바닥글. `body`는 `flex min-h-screen flex-col`. `metadata.description`을 `제주의 소규모 투어와 다가오는 회차를 한눈에 확인하세요.`로 바꿈
+- `src/app/(frontend)/[...slug]/page.tsx`: `notFound()`만 부름(`@MX:NOTE` — 관리자·API를 가리지 않는 이유)
+- `globals.css`: `#main-content:focus { outline: none }`(계층 밖 — `tokens.css`의 `:focus-visible`을 이기려면 같은 계층 밖이어야 함), 동작 줄이기 규칙(plan.md §B.9 그대로)
+- `tokens.css`: `--font-sans` 앞에 `var(--font-pretendard, "Pretendard Variable")`
+- 기존 단언 갱신(plan.md M2 "깨지는 단언만"): `tests/e2e/home.spec.ts`의 `getByText(/준비 중/)` → `main` 안(바닥글 `개인정보 처리방침(준비 중)`과 겹침), `a[href="/tours"]` 1개 → `main a[href="/tours"]`(머리글 링크가 생김). 제목 36px 단언은 그대로(M3에서 파일 전체 교체)
+
+**빌드** (`pnpm build`, 종료 0, `build.log`): 경로 표에 `ƒ /[...slug]`가 요청 시점 렌더링으로 나타나고, `/`는 아직 `○`(정적) — 홈의 `connection()` 전환은 M3(AC-LANDING-015) 범위다.
+
+**AC 상태 (M2 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-LANDING-009 | PASS | `tests/e2e/layout.spec.ts` "AC-LANDING-009" 3개(공개 화면 6개 머리글 구조, 이동 2건, `/admin`에 `숨비투어`(`/`) 링크 없음) |
+| AC-LANDING-010 | PASS | 같은 파일 "AC-LANDING-010" — 6개 화면 바닥글 1개·두 문구·링크 0개, 페이지 `a` 1개 이상 먼저 단언 뒤 `href` 없음·빈 값·`#` 0개 |
+| AC-LANDING-011 | PASS | 같은 파일 "AC-LANDING-011" 4개 + 전체 `pnpm e2e`에서 기존 관리자 E2E 4개 파일 통과(아래) |
+| AC-LANDING-012 | PASS | 저장소 규칙 5개(`repo-rules.spec.ts` "AC-LANDING-012") + E2E 2개(같은 출처 `/_next/static/media/` 글꼴, 외부 요청 0건, 첫 글꼴 이름의 `FontFace` `loaded`, `"Pretendard Variable"` 포함·마지막 `sans-serif`, `/admin`이 같은 글꼴 경로를 요청하지 않음) |
+| AC-LANDING-014 (공통 부분) | PASS | 같은 파일 "AC-LANDING-014" 6개 — 6개 화면 랜드마크·`h1`·`lang`, `/`·`/tours` 본문 바로가기, `/` 애니메이션·`video`·`marquee` 없음(두 설정), `/`·`/tours` 동작 줄이기 전환 시간. 홈 `h2`·카드 `h3`은 M3 |
+
+**M2 품질 게이트** (같은 작업 트리, 순서대로)
+
+| 점검 | 명령 | 결과 |
+|---|---|---|
+| 생성 파일 | `pnpm generate:types` | 종료 0, `git status`에 `src/payload-types.ts` 변경 없음 |
+| 타입 | `pnpm typecheck` | 종료 0 |
+| 빌드 | `pnpm build` | 종료 0 (`ƒ /[...slug]`) |
+| 단위·통합 | `pnpm test` | 종료 0, `Test Files  42 passed (42)`, `Tests  646 passed (646)` (기준 641 + 저장소 규칙 5), `All files` 줄 커버리지 99.35% |
+| E2E | `pnpm e2e` | 종료 0, `77 passed (2.5m)` (기준 60 + `layout.spec.ts` 17) |
+| 린트 | `pnpm lint` | 종료 0 |
+| 포맷 | `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| 보존 | `git diff --stat b8087f8 -- pnpm-lock.yaml package.json .prettierignore eslint.config.mjs pnpm-workspace.yaml .gitattributes src/lib/occupancy.ts src/lib/session-availability.ts src/lib/catalog-order.ts src/lib/submit-application.ts` | 출력 없음 |
+| 표식 잔여 | Node `pg` 스크립트(AC-LANDING-016 SQL 조건) | `tours test-%: 0`, `media test-%: 0`, `users @example.test: 0`, `home_settings test-%: 0`, `applications example.test: 1`(ID 2033 — 사용자의 개발용 신청, M1 기록과 같음) |
+| 원래 값 파일 | `.moai/state/verify/landing/home-settings-original.json` | 없음(M2는 전역 설정을 바꾸지 않음) |
+
+**과정에서 고친 것**
+
+- 첫 전체 `pnpm e2e`(`e2e.log`)는 `2 failed`, `2 did not run`, `73 passed`였다. 원인 하나는 이 마일스톤의 시험 코드: `layout.spec.ts`의 `afterAll`이 `payload.destroy()`를 불러, 같은 워커에서 다음에 도는 `participants-csv.spec.ts`가 닫힌 Payload 단일 인스턴스를 받아 `beforeAll`이 멈췄다(DB 쪽 잠금은 없음을 `pg_stat_activity`로 확인). 다른 E2E 파일처럼 정리만 하고 닫지 않게 고쳤다. 다시 돌린 전체 실행이 위 `77 passed`다.
+- 첫 커밋 시도는 PC가 꺼지며 끊겼다(pre-commit 훅이 실패 문구 없이 종료, `HEAD`는 `cb480c6` 그대로). 2026-11-17 재시작 뒤(PostgreSQL 컨테이너 재시작, `postgres healthy`) 글꼴 크기·SHA-256(위 표와 같음)을 다시 확인하고 게이트를 처음부터 다시 돌렸다: `pnpm typecheck` 종료 0, `pnpm build` 종료 0, `pnpm test` 종료 0 `Tests  646 passed (646)`, `pnpm e2e` 종료 0 `77 passed (1.8m)`, `pnpm lint` 종료 0, `pnpm format:check` 종료 0, 보존 diff 출력 없음, 표식 잔여는 위와 같음(`resume-*.log`).
+- 같은 첫 실행의 나머지 실패 하나는 `admin-ops.spec.ts:324`(요청 사항 삭제 뒤 상세 화면 다시 열기)의 `page.goto: net::ERR_ABORTED`였다 — 관리자 화면((payload) 레이아웃, 이 마일스톤과 무관)에서 삭제 직후 화면 자체 이동과 테스트의 이동이 겹친 것으로 보이며, 다시 돌린 실행에서는 통과했다(`ok 13 … (9.3s)`). 간헐 실패 후보로 기록한다(잔여 위험).
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase — manager-develop>_

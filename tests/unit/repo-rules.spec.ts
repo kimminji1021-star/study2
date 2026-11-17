@@ -1,6 +1,7 @@
 // 저장소 규칙 테스트 — package.json과 설치된 의존성이 SPEC-INFRA-001의 버전 정책을 지키는지 확인한다.
 // 셸 검색 대신 Node에서 직접 파일을 읽어 PowerShell 인용 차이를 피한다.
 // 각 검사는 대상이 1건 이상 있음을 먼저 단언해, 대상이 비어서 통과하는 경우를 막는다.
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -841,5 +842,53 @@ describe('AC-ADMIN-002 신청 필드의 수정 잠금', () => {
   it('applications는 일괄 수정을 막는다(disableBulkEdit)', async () => {
     const { Applications } = await import('../../src/collections/Applications')
     expect(Applications.disableBulkEdit).toBe(true)
+  })
+})
+
+// SPEC-LANDING-001 AC-LANDING-012 — Pretendard는 공식 v1.3.9 원본을 그대로 직접 호스팅한다(plan.md §B.8, R16).
+// 글꼴 파일이 바뀌거나 잘못 받은 파일이 커밋되면 크기·SHA-256 단언이 실패한다. 값의 출처는 progress.md §E.2(M2).
+const FONT_DIR = `${FRONTEND_DIR}fonts`
+const FONT_FILE = `${FONT_DIR}/PretendardVariable.woff2`
+const FONT_LICENSE_FILE = `${FONT_DIR}/OFL.txt`
+const FONT_SIZE_BYTES = 2_057_688
+const FONT_SHA256 = '9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4'
+const LOCAL_FONT_MODULE = 'next/font/local'
+
+describe('AC-LANDING-012 Pretendard 직접 호스팅', () => {
+  it('글꼴 파일은 공식 v1.3.9 원본 그대로다(크기·SHA-256)', () => {
+    const data = readFileSync(path.join(repoRoot, FONT_FILE))
+
+    expect(data.byteLength).toBe(FONT_SIZE_BYTES)
+    expect(createHash('sha256').update(data).digest('hex')).toBe(FONT_SHA256)
+  })
+
+  it('같은 디렉터리의 OFL.txt에 라이선스 이름과 저작권 줄이 있다', () => {
+    const license = readRepoFile(FONT_LICENSE_FILE)
+
+    expect(license).toContain('SIL OPEN FONT LICENSE Version 1.1')
+    expect(license).toContain('Copyright (c) 2021, Kil Hyung-jin')
+  })
+
+  it('next/font/local을 import하는 파일이 1개 이상 있고 모두 (frontend) 아래에 있다', () => {
+    const importers = listFiles('src').filter((file) =>
+      importSpecifiers(readRepoFile(file)).some((specifier) => specifier === LOCAL_FONT_MODULE),
+    )
+
+    expect(importers.length, `${LOCAL_FONT_MODULE}을 import하는 파일이 있어야 한다`).toBeGreaterThanOrEqual(1)
+    expect(importers.filter((file) => !file.startsWith(FRONTEND_DIR))).toEqual([])
+  })
+
+  it('(payload) 아래 파일은 PretendardVariable을 참조하지 않는다', () => {
+    const payloadFiles = listFiles(PAYLOAD_DIR)
+    expect(payloadFiles.length, '(payload) 아래에 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    expect(payloadFiles.filter((file) => readRepoFile(file).includes('PretendardVariable'))).toEqual([])
+  })
+
+  it('package.json의 의존성 이름에 pretendard가 없다', () => {
+    const names = Object.keys(directDependencies(readRootPackage()))
+    expect(names.length).toBeGreaterThanOrEqual(1)
+
+    expect(names.filter((name) => name.toLowerCase().includes('pretendard'))).toEqual([])
   })
 })

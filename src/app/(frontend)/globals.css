@@ -18,3 +18,22 @@
     word-break: keep-all;
   }
 }
+
+/* 본문 바로가기 대상(layout.tsx의 #main-content). 바로가기를 누르면 포커스를 받지만 영역 전체에 외곽선을 그리지 않는다.
+   tokens.css의 전역 :focus-visible 규칙(계층 밖)을 이기려고 이 규칙도 계층 밖에 둔다(SPEC-LANDING-001 plan.md §B.6) */
+#main-content:focus {
+  outline: none;
+}
+
+/* 동작 줄이기를 설정한 방문자에게는 전환·애니메이션을 사실상 없앤다(SPEC-LANDING-001 REQ-LANDING-014, plan.md §B.9).
+   기존 화면의 transition-colors도 이 규칙을 따른다. 기본 설정의 방문자에게는 아무것도 바뀌지 않는다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

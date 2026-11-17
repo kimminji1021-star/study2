@@ -45,10 +45,12 @@
 
   /* 관리자 대시보드 전용 회색(--admin-*)은 원본 토큰에만 둔다. 관리자 화면은 이 파일을 불러오지 않는다 */
 
-  /* 글꼴 */
+  /* 글꼴 — 맨 앞은 next/font/local이 불러온 Pretendard(layout.tsx가 <html>에 --font-pretendard를 정의, SPEC-LANDING-001 plan.md §B.8).
+     next/font는 자기가 정한 글꼴 이름을 쓰므로 "Pretendard Variable" 이름만으로는 불러온 파일이 적용되지 않는다.
+     var()의 대체값은 변수가 없는 요소에서 선언 전체가 무효가 되어 아래 목록까지 잃는 것을 막는다. 기존 목록은 순서 그대로 뒤에 둔다 */
   --font-sans:
-    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo",
-    "Noto Sans KR", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+    var(--font-pretendard, "Pretendard Variable"), "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
 
   /* 글자 크기 (PC 기준, 모바일 값은 아래 미디어 쿼리) */
   --text-display: 56px; /* 600 · --leading-display · --tracking-display */

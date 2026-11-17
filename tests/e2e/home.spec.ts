@@ -14,7 +14,8 @@ test.describe('임시 홈 페이지', () => {
 
     expect(response?.status()).toBe(200)
     await expect(page.locator('h1')).toContainText('숨비투어')
-    await expect(page.getByText(/준비 중/)).toBeVisible()
+    // 바닥글의 `개인정보 처리방침(준비 중)`과 겹치지 않게 본문 안에서 찾는다(SPEC-LANDING-001 M2 — 이 파일 전체는 M3에서 새 기준으로 바뀐다)
+    await expect(page.locator('main').getByText(/준비 중/)).toBeVisible()
   })
 
   test('제목의 글자 크기는 Tailwind 유틸리티 값이며 브라우저 기본값과 다르다', async ({ page, context }) => {
@@ -36,7 +37,8 @@ test.describe('임시 홈 페이지', () => {
     await page.goto('/')
     expectE2ePort(page)
 
-    const link = page.locator('a[href="/tours"]')
+    // 공통 머리글에도 /tours 링크가 생겼으므로 본문 안의 링크만 센다(SPEC-LANDING-001 M2)
+    const link = page.locator('main a[href="/tours"]')
     await expect(link).toHaveCount(1)
     await link.click()
 
