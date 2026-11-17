@@ -329,6 +329,76 @@ x10 … AC-LANDING-015 … › …   Expected: "제주를 가장 가까이, 숨�
 - 추천 투어 E2E는 개발 DB의 실제 공개 투어와 섞이며 기대값을 같은 순간의 `listPublishedTours`로 정한다. 페이지 요청과 기대값 계산 사이에 회차 시각 경계를 넘으면 순서가 달라질 수 있다(회차는 하루 이상 뒤라 실제로는 일어나지 않음).
 - `tests/e2e/home.spec.ts`의 AC-LANDING-015 새로고침 시험은 plan.md M4 목록에 있던 항목이다 — M4에서 중복으로 만들지 않는다.
 
+### M4 — 관리자 편집 흐름, 반응형, 스크린숏 (2026-11-17, 기준 HEAD `928bcd2`)
+
+긴 출력: `.moai/state/verify/landing-m4/*.log`(gitignore 대상). 시작 전 `.moai/state/verify/landing/home-settings-original.json` 없음(디렉터리도 없음), E2E 포트 3100·3000 모두 비어 있음.
+
+**새 시험 파일**
+
+- `tests/e2e/home-admin.spec.ts`(4개): REST 권한(익명 `GET` 200, 익명 `POST` 정확히 403·값 불변, 관리자 `POST` 200·값 반영), GraphQL 익명 `updateHomeSetting` → `errors`에 `You are not allowed to perform this action.`·값 불변, 관리자 화면(테스트 관리자 로그인 → `nav`의 `홈 화면 설정` 링크 `href=/admin/globals/home-settings` → `#field-headline`에 `<표식>-화면편집` 입력·`#action-save` → 성공 알림 → 새 익명 브라우저 컨텍스트의 `/` `h1` = `<표식>-화면편집`), 익명 파일 주소(대표 사진 h → 200·`image/png`, 비운 뒤 200 아님)
+- `tests/e2e/responsive.spec.ts`(5개): 1440 디자인 값(본문 17px/24.99px, `h1` 600·자간 음수, 두 알약 `9999px`·그림자 없음, 카드 그림자 없음, 면 색 3개), 375(본문 16px, `/`·`/tours`·상세 `scrollWidth` ≤ 375, 머리글 링크 2개·두 버튼 44×44 이상), 스크린숏 6개(`/tours`·상세·`/no-such-page` × 1440·375, 각 파일 크기 > 0 단언)
+- 두 파일 모두 `beforeAll`에서 원래 값을 먼저 저장하고 `afterAll`에서 되돌림 → `toEqual` → 표식 정리. `payload.destroy()`는 부르지 않음. 홈 스크린숏 4개와 AC-LANDING-015 새로고침은 M3(`home.spec.ts`)에 있어 다시 만들지 않음
+
+**RED** — 이 마일스톤의 시험은 M1~M3에서 이미 구현한 동작을 E2E로 확인하는 것이라, 구현 전 상태가 없다. 첫 실행(`pnpm exec playwright test tests/e2e/home-admin.spec.ts tests/e2e/responsive.spec.ts`, 종료 0, `red-e2e.log`)은 `9 passed (37.8s)`였다. 시험이 헛돌지 않음을 보이려고 제품 코드 세 곳을 일부러 깨뜨린 상태(`HomeSettings` `update`를 항상 허용, `mediaReadAccess`에서 홈 대표 사진 ID 제외, `tokens.css` `--text-body` 18px·`--touch-min` 40px)로 같은 명령을 돌렸다(종료 1, `red-mutation.log`):
+
+```
+  x  1 … AC-LANDING-002 전역 설정 접근 규칙(요청 API) › REST: 익명 읽기는 200, 익명 수정은 정확히 403이고 …
+    Expected: 403
+    Received: 200
+  x  2 … › GraphQL: 익명 updateHomeSetting은 권한 오류이고 큰 제목이 그대로다
+    Expected value: "You are not allowed to perform this action."
+    Received array: []
+  x  4 … AC-LANDING-003 대표 사진 파일 주소(익명) › 대표 사진으로 정하면 익명 파일 요청이 200·image/png이고, 비우면 200이 아니다
+    Expected: 200
+    Received: 403
+  x  5 … AC-LANDING-013 디자인 값(1440) › …
+    Expected: "17px"
+    Received: "18px"
+  x  8 … AC-LANDING-013 375px 화면 › /의 머리글 링크 2개·투어 둘러보기·투어 전체 보기의 터치 영역이 44px 이상이다
+    Error: 머리글 숨비투어 높이
+    Expected: >= 44
+    Received:    40
+  5 failed
+  4 passed (1.0m)
+```
+
+깨뜨린 세 곳은 Edit·`sed`로 원래대로 되돌렸고 `git status --short`에 제품 파일 변경이 없음을 확인했다. 깨뜨린 실행에서도 원래 값 파일이 남지 않았다(`afterAll` 복원 확인).
+
+**GREEN** — 되돌린 뒤 같은 명령 종료 0, `green-e2e.log`: `9 passed (29.5s)`. 제품 코드는 바꾸지 않았다(화면 조정 필요 없음 — 1440·375 값과 터치 영역이 M2·M3 구현 그대로 통과).
+
+**AC 상태 (M4 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-LANDING-002 (E2E 부분) | PASS | `home-admin.spec.ts` "AC-LANDING-002" 3개 — REST 200/403/200, GraphQL 권한 오류·값 불변, 관리자 화면 메뉴·편집·저장 알림·익명 `/` 반영 |
+| AC-LANDING-002 (수동) | PENDING-human | 사용자가 관리자 화면에서 사진을 직접 올려 대표 사진으로 고르고 저장 → `/` 히어로에 사진, 대표 사진 비우고 저장 → 짙은 히어로 |
+| AC-LANDING-003 (E2E 부분) | PASS | `home-admin.spec.ts` "AC-LANDING-003" — 익명 파일 주소 200·`image/png` → 비운 뒤 200 아님 |
+| AC-LANDING-013 (자동) | PASS | `responsive.spec.ts` "AC-LANDING-013" 4개 |
+| AC-LANDING-013 (수동) | PENDING-human | 사용자가 `.moai/state/verify/landing/`의 1440·375 스크린숏과 실제 화면으로 디자인 방향(거의 검은 글자, 좁은 자간 제목, 알약 버튼, 카드 그림자 없음, 면의 바뀜) 확인 |
+| AC-LANDING-015 (E2E 부분) | PASS | M3 `home.spec.ts` "AC-LANDING-015"(중복 생성 안 함), 아래 전체 E2E에서 계속 통과 |
+| AC-LANDING-016 (스크린숏) | PASS | 10개 모두 있음 — 홈 4개(M3) + `tours-1440/375`, `tour-detail-1440/375`, `not-found-1440/375`(M4) |
+
+**M4 점검** (같은 작업 트리)
+
+| 점검 | 명령 | 결과 |
+|---|---|---|
+| E2E 전체 | `pnpm e2e` | 종료 0, `94 passed (1.9m)` (85 + `home-admin` 4 + `responsive` 5), `e2e-full.log` |
+| 린트 | `pnpm lint` | 종료 0 |
+| 포맷 | `pnpm format:check` | 첫 실행 종료 1(`responsive.spec.ts` 줄바꿈) → `prettier --write` 두 파일 뒤 종료 0, `All matched files use Prettier code style!` |
+| 타입 | `pnpm typecheck` | 종료 0 |
+| 표식 잔여·설정 복원 | Node `pg` 스크립트(AC-LANDING-016 SQL 조건, `.env` 값 출력 안 함) | `tours test-%: 0`, `media test-%: 0`, `applications example.test: 1`(ID `[2033]` — 사용자의 개발용 신청), `users @example.test: 0`, `home_settings test-%: 0`, `home_settings` `[{"id":1,"hero_image_id":null,"headline":null,"intro":null}]` |
+| 원래 값 파일 | `.moai/state/verify/landing/home-settings-original.json` | 없음 |
+
+**사용자 수동 확인 (PENDING-human — 결과를 이 절에 기록)**
+
+1. AC-LANDING-002: 관리자 화면 `홈 화면 설정`에서 사진을 직접 올려 대표 사진으로 고르고 저장 → `/` 히어로에 그 사진이 보임, 대표 사진을 비우고 저장 → 짙은 히어로로 돌아옴(코드 변경·다시 빌드 없음)
+2. AC-LANDING-013: 스크린숏 10개(`.moai/state/verify/landing/*.png`)와 실제 화면을 보고 2026-11-16 디자인 방향과 맞는지 확인. 실제 사진에서 0.65 덮개로 어두워지는 정도(R8)도 이때 본다
+
+**메모**
+
+- 스크린숏 왼쪽 아래 `N` 원형 표시는 `next dev` 개발 표시기다(운영 빌드에는 없음).
+- 투어 상세 화면의 사진 상자에는 그림자가 있다(`tours/[slug]/page.tsx` 44행 `shadow-(--shadow-photo)` — 사진 전용 토큰, SPEC-TOUR-001 화면, 이 SPEC은 면 배치·스타일을 바꾸지 않음 — plan.md §D 유지). AC-LANDING-013의 "카드 그림자 없음"은 홈 추천 투어 카드 기준이며 통과했다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase — manager-develop>_
