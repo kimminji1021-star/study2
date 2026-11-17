@@ -535,7 +535,7 @@ status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-
 ```yaml
 sync_status: complete
 sync_complete_at: 2026-11-17
-sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+sync_commit_sha: ad92c47   # sync 커밋(후속 chore 커밋에서 기록)
 frontmatter_status_transitions:
   spec_md: "in-progress → implemented → completed (3-phase close, sync 커밋에 합침), updated 2026-11-17"
   spec_compact_md: "status 줄 completed로 맞춤"
