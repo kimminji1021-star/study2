@@ -6,6 +6,18 @@
 
 ### 추가됨
 
+- **SPEC-LANDING-001 랜딩 페이지** (수용 기준 16개 중 자동화 부분 전부 충족 — AC-LANDING-002·013 관리자 화면·디자인 수동 확인은 사람 확인 대기, sync 감사 PASS 93.7)
+  - 홈 화면 `/`이 임시 홈을 대체 (`src/app/(frontend)/page.tsx`, `src/lib/home-page.ts`): 히어로는 관리자가 올린 대표 사진 위에 0.65 불투명도 덮개를 깔고, 사진이 없으면 어두운 배경으로 대체. 흰색 알약형 CTA 버튼 (`src/components/HomeHero.tsx`)
+  - 관리자 "홈 화면 설정" 전역 설정에서 큰 제목·소개 문구·대표 사진을 편집하고, 비워 두면 기본 문구를 사용 (`src/globals/HomeSettings.ts`). 익명은 읽기만 가능하고 수정은 관리자만 가능
+  - 추천 투어: `/tours`와 같은 순서로 최대 6개를 보여 주고 "투어 전체 보기" 링크 제공 (`src/components/RecommendedTours.tsx`, `src/components/TourCard.tsx`, `src/lib/catalog.ts`)
+  - 모든 공개 화면에 공통 머리글(숨비투어 · 투어)과 바닥글(© 숨비투어 · 개인정보 처리방침(준비 중)), 본문 바로가기 링크 추가 (`src/components/SiteHeader.tsx`, `src/components/SiteFooter.tsx`, `src/app/(frontend)/layout.tsx`)
+  - 공개 사이트의 없는 주소는 머리글이 있는 404 화면으로 처리 (`src/app/(frontend)/[...slug]/page.tsx`). `/admin`과 `/api` 경로는 영향 없음
+  - Pretendard Variable v1.3.9를 `next/font/local`로 직접 호스팅하고 OFL 라이선스를 함께 배포 (`src/app/(frontend)/fonts/PretendardVariable.woff2`, `src/app/(frontend)/fonts/OFL.txt`). 외부 글꼴 요청 없음
+  - 미디어 익명 읽기 범위를 현재 대표 사진 하나까지만 넓힘 (`src/lib/access.ts`)
+  - `/`는 요청 시점에 렌더링해 관리자가 바꾼 내용이 새로고침으로 바로 반영됨
+  - 테스트: Vitest 659건(`src/lib` 라인 커버리지 99.35%), Playwright E2E 94건
+  - 출시 전 남은 항목: 개인정보 처리방침 링크 연결, 운영용 대표 사진 등록, Supabase Storage 파일 주소 재확인
+
 - **SPEC-ADMIN-001 관리자 운영 기능** (수용 기준 16개 중 자동화 부분 전부 충족 — AC-ADMIN-003·015 관리자 화면 수동 확인은 사람 확인 대기, sync 감사 PASS 92.4)
   - 신청 상태 변경: 관리자 신청 상세에서 `status` 필드만 편집하고 나머지 필드는 읽기 전용, 일괄 작업 없음 (`src/collections/Applications.ts`, `src/lib/application-status.ts`). 대기·확정·취소 사이를 자유롭게 바꾸되, 취소를 되돌릴 때 정원을 넘으면 거부하고 되돌린 결과 정원이 차면 회차를 자동 마감. 취소해도 마감은 자동으로 풀리지 않음
   - 동시성: 모든 신청 수정이 회차 → 신청 순서로 잠근 뒤 판단해 사이트 접수와 동시에 처리해도 정원을 넘지 않으며, 잠금 대기가 길어지면 `SESSION_BUSY`로 거부

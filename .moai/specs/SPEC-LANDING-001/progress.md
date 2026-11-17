@@ -489,10 +489,10 @@ x10 … AC-LANDING-015 … › …   Expected: "제주를 가장 가까이, 숨�
 
 ```yaml
 run_complete_at: 2026-11-17
-run_commit_sha: pending-backfill   # M5 커밋 자기 SHA는 같은 커밋에 쓸 수 없음 — 오케스트레이터/sync 단계가 기록
+run_commit_sha: ed5fd0d   # M5 커밋(sync 단계에서 기록)
 run_base_head: 928bcd2             # M3 병합(main)
 run_status: complete-pending-human # 자동 검증 전부 통과, 사람 확인 2건 남음(아래)
-milestone_commits: [M1 cb480c6, M2 b82065b, M3 928bcd2, M4 019f6f4, M5 pending-backfill]
+milestone_commits: [M1 cb480c6, M2 b82065b, M3 928bcd2, M4 019f6f4, M5 ed5fd0d]
 m1_to_mN_commit_strategy: "마일스톤마다 격리 작업 트리에서 커밋 1개 → 오케스트레이터가 main에 fast-forward 병합(푸시는 오케스트레이터)"
 ac_pass_count: 16          # 자동 판정 부분 기준
 ac_fail_count: 0
@@ -532,7 +532,36 @@ status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase — manager-docs>_
+```yaml
+sync_status: complete
+sync_complete_at: 2026-11-17
+sync_commit_sha: pending-backfill   # 후속 chore 커밋에서 기록
+frontmatter_status_transitions:
+  spec_md: "in-progress → implemented → completed (3-phase close, sync 커밋에 합침), updated 2026-11-17"
+  spec_compact_md: "status 줄 completed로 맞춤"
+sync_audit:
+  verdict: PASS
+  score: 93.7
+  dimensions: {functionality: 92, security: 95, craft: 95, consistency: 94}
+  blocking_findings: 0
+  report: .moai/reports/sync-audit/SPEC-LANDING-001-sync-audit.md   # 추적하지 않는 파일
+sync_evidence_head: ed5fd0d
+spec_doc_carry_over: "manager-spec이 spec.md·plan.md·acceptance.md·spec-compact.md에 문서 이월(v0.1.2) 반영 — 이 sync 커밋에 포함"
+b12_self_test:
+  a_pre_emission_grep: "grep -c 'SPEC-LANDING-001' CHANGELOG.md → 0"
+  b_ac_count: "acceptance.md 고유 AC-ID 22개 = AC-LANDING 16개 + 회귀 참조 AC-ADMIN-012, AC-APPLY-016, AC-TOUR-006·009·012·013. CHANGELOG 항목은 16개로 기록"
+  c_path_check: "CHANGELOG가 인용한 경로 14개 ls 확인, 누락 0"
+changelog_entry_position: "[Unreleased] > 추가됨 첫 항목(SPEC-ADMIN-001 위)"
+carry_over:
+  manual_check:
+    - "AC-LANDING-002 관리자 화면에서 대표 사진 올리기·고르기·비우기 수동 확인 — 사람 확인 대기(미실시)"
+    - "AC-LANDING-013 1440·375 스크린숏과 실제 화면으로 디자인 방향 수동 확인 — 사람 확인 대기(미실시)"
+  known_limits: "plan §G F1~F4 알려진 한계 — 후속 SPEC에서 다룸"
+  deploy:
+    - "개인정보 처리방침 링크 연결(현재 '준비 중' 문구)"
+    - "운영용 대표 사진 등록"
+    - "Supabase Storage 사용 시 파일 주소·익명 읽기 범위 재확인"
+```
 
 ## plan-audit 2회차 결과 (2026-11-16)
 

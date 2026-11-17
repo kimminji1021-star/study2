@@ -220,6 +220,8 @@
 - **And** 이어서 다음 두 명령의 출력이 모두 `False`다
   - `(Get-Content .next/prerender-manifest.json -Raw | ConvertFrom-Json).routes.PSObject.Properties.Name -contains '/'` (홈이 사전 렌더링되지 않음 — SPEC-TOUR-001 AC-TOUR-013의 "`/`가 사전 렌더링됨" 구조 단언을 대체)
   - `(Get-Content .next/prerender-manifest.json -Raw | ConvertFrom-Json).routes.PSObject.Properties.Name -contains '/tours'` (SPEC-TOUR-001 유지)
+- **And** (대안) 위 세 PowerShell 명령을 실행할 수 없는 환경에서는 같은 조건을 판정하는 Node 명령 하나로 대신할 수 있다. `pnpm build` 직후 실행하며 출력이 정확히 `true false false`여야 한다(순서대로 `/`가 빌드된 경로에 있음, `/`가 사전 렌더링 목록에 없음, `/tours`가 사전 렌더링 목록에 없음)
+  - ``node -e 'const fs=require(`fs`);const a=JSON.parse(fs.readFileSync(`.next/app-path-routes-manifest.json`,`utf8`));const p=JSON.parse(fs.readFileSync(`.next/prerender-manifest.json`,`utf8`)).routes;console.log(Object.values(a).includes(`/`),`/` in p,`/tours` in p)'``
 - **And** 저장소 규칙 테스트(`pnpm test`)가 `src/app/(frontend)/page.tsx`가 `next/server`의 `connection`을 import하고 `await`로 호출하며 `generateStaticParams`를 내보내지 않음을 확인한다(기존 `tours`·`apply` 화면 규칙 유지)
 - **And** E2E가 `/`를 연 뒤 로컬 API로 설정의 큰 제목을 `<표식>-갱신`으로 바꾸고 새로고침하면 `h1` 텍스트가 정확히 `<표식>-갱신`이다
 
@@ -237,7 +239,7 @@
 - **And** 두 명령이 끝난 뒤 다음 명령의 출력이 각각 `0`이다
   - `docker compose exec -T postgres psql -U <POSTGRES_USER 값> -d <POSTGRES_DB 값> -tAc 'SELECT count(*) FROM tours WHERE slug LIKE ''test-%'';'`
   - `docker compose exec -T postgres psql -U <POSTGRES_USER 값> -d <POSTGRES_DB 값> -tAc 'SELECT count(*) FROM media WHERE filename LIKE ''test-%'';'`
-  - `docker compose exec -T postgres psql -U <POSTGRES_USER 값> -d <POSTGRES_DB 값> -tAc 'SELECT count(*) FROM applications WHERE email LIKE ''%example.test'';'`
+  - `docker compose exec -T postgres psql -U <POSTGRES_USER 값> -d <POSTGRES_DB 값> -tAc 'SELECT count(*) FROM applications WHERE email LIKE ''%example.test'';'` (이 SPEC 이전부터 개발 DB에 있던 사용자의 개발용 신청 ID 2033(`example.test` 이메일, 2026-11-12 생성)은 테스트 잔여가 아니라 기준값이다. 이 행이 있는 DB에서는 출력 `1`을 "이 SPEC 시작 전 값에서 증가 0"으로 판정하며, SPEC-ADMIN-001과 같은 해석이다)
   - `docker compose exec -T postgres psql -U <POSTGRES_USER 값> -d <POSTGRES_DB 값> -tAc 'SELECT count(*) FROM users WHERE email LIKE ''%@example.test'';'`
   - `docker compose exec -T postgres psql -U <POSTGRES_USER 값> -d <POSTGRES_DB 값> -tAc 'SELECT count(*) FROM home_settings WHERE headline LIKE ''%test-%'' OR intro LIKE ''%test-%'';'` (테이블·열 이름은 M1에서 확인한 실제 이름 — `plan.md` §B.1. 이름이 다르면 run 단계가 차단자로 보고하고 이 줄을 고친다)
 - **And** 기존 SPEC-APPLY-001 데이터 정리 기준(AC-APPLY-016)과 SPEC-TOUR-001 기준(AC-TOUR-009)이 계속 통과한다
