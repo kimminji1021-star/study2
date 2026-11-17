@@ -399,9 +399,136 @@ x10 … AC-LANDING-015 … › …   Expected: "제주를 가장 가까이, 숨�
 - 스크린숏 왼쪽 아래 `N` 원형 표시는 `next dev` 개발 표시기다(운영 빌드에는 없음).
 - 투어 상세 화면의 사진 상자에는 그림자가 있다(`tours/[slug]/page.tsx` 44행 `shadow-(--shadow-photo)` — 사진 전용 토큰, SPEC-TOUR-001 화면, 이 SPEC은 면 배치·스타일을 바꾸지 않음 — plan.md §D 유지). AC-LANDING-013의 "카드 그림자 없음"은 홈 추천 투어 카드 기준이며 통과했다.
 
+### M5 — 회귀 정리, 품질 게이트, MX (2026-11-17, 기준 HEAD `019f6f4` = M4 커밋)
+
+긴 출력: `.moai/state/verify/landing-m5/*.log`(gitignore 대상). 이 마일스톤은 새 동작을 더하지 않으므로 RED 단계가 없다(제품·시험 코드 변경 없음, `progress.md`만 갱신). RED 증거는 M1~M3의 구현 전 실패 출력과 M4의 일부러 깨뜨린 실행(위)에 있다.
+
+**품질 게이트** (plan.md §E-1 순서대로 실행한 뒤 §E-2를 실행, 같은 작업 트리)
+
+| 점검 | 명령 | 결과 |
+|---|---|---|
+| DB | `docker compose ps --format "{{.Service}} {{.Health}}"` | `postgres healthy` |
+| 생성 파일 | `pnpm generate:types` | 종료 0, 뒤이은 `git status --short` 출력 없음(`src/payload-types.ts` 변경 없음) |
+| 타입 | `pnpm typecheck` | 종료 0 |
+| 빌드 | `pnpm build` | 종료 0, 출력에 `warn` 0줄, 경로 표 `┌ ƒ /`·`├ ƒ /[...slug]`·`├ ƒ /tours`·`└ ƒ /tours/[slug]` |
+| 빌드 매니페스트(AC-LANDING-015) | Node로 같은 조건 판정(`.next/app-path-routes-manifest.json` 값에 `/`, `.next/prerender-manifest.json` `routes` 키) | `routes has /: true` → `prerender has /: false`, `prerender has /tours: false`. 수용 기준의 PowerShell 명령 그대로의 실행은 이 세션의 자동 승인 분류기가 거부해 Node 판정으로 대신했다(M3와 같은 방식) |
+| 단위·통합 | `pnpm test` | 종료 0, `Test Files  43 passed (43)`, `Tests  659 passed (659)` |
+| 커버리지 | 같은 실행(`src/lib/**`, 임계값 lines 85) | `All files` 줄 99.35%(`coverage-summary.json` `total.lines` `{"total":621,"covered":617,"pct":99.35}`). `home-page.ts` 100%, `access.ts` 100%, `catalog.ts` 100% |
+| E2E | `pnpm e2e` | 종료 0, `94 passed (1.9m)` |
+| 표식 잔여(AC-LANDING-016) | Node `pg` 스크립트(수용 기준 SQL 5개와 같은 조건, `.env` 값 출력 안 함, `residue.log`) | `tours test-%: 0`, `media test-%: 0`, `applications example.test: 1`, `users @example.test: 0`, `home_settings test-%: 0` |
+| 남은 신청 1건 | 같은 스크립트 | ID `[2033]` — 2026-11-12에 생긴 사용자의 개발용 신청(M1 기준선부터 같음, 증가 0). 이 SPEC의 테스트 데이터가 아니다 |
+| 설정 복원 | 같은 스크립트 | `home_settings` `[{"id":1,"hero_image_id":null,"headline":null,"intro":null}]` — M1 직후 원래 값과 같음 |
+| 원래 값 파일 | `test -e .moai/state/verify/landing/home-settings-original.json` | 없음 |
+| 스크린숏 10개 | `stat -c "%n %s"` | `home-dark-1440` 113136, `home-dark-375` 110889, `home-photo-1440` 112645, `home-photo-375` 110748, `tours-1440` 90489, `tours-375` 96558, `tour-detail-1440` 60107, `tour-detail-375` 49453, `not-found-1440` 25963, `not-found-375` 19923(바이트, 모두 > 0) |
+| 린트 | `pnpm lint` | 종료 0 |
+| 포맷 | `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| 작업 트리 | `git status --short` | 출력 없음 |
+| 보존 | `git diff --stat b8087f8 -- pnpm-lock.yaml package.json .prettierignore eslint.config.mjs pnpm-workspace.yaml .gitattributes src/lib/occupancy.ts src/lib/session-availability.ts src/lib/catalog-order.ts src/lib/submit-application.ts` | 출력 없음 |
+| `importMap.js` | `pnpm generate:importmap` → `git status --short` | 종료 0, 변경 없음 → 커밋하지 않음 |
+| 관리자 이메일 | `tests/` 아래 이메일 형식 문자열 중 `example.test`가 아닌 것 | 0건 |
+| 커밋 제외 파일 | `git ls-files`에서 `.env`·`media/`·`.moai/state/` | 0건 |
+
+**@MX 태그 점검** (`src/`에서 `@MX:` 검색)
+
+| 대상 | 태그 | 판정 |
+|---|---|---|
+| `src/lib/home-page.ts` `getHomePageData` | `@MX:DEBT` + `@MX:CEILING`(공개 투어 수백 개 이하) + `@MX:UPGRADE`(정렬 키를 DB 질의로 옮겨 6개만 읽기) | 있음 |
+| `src/lib/access.ts` `mediaReadAccess` | `@MX:DEBT`(추가 조회 2회) + `@MX:CEILING` + `@MX:UPGRADE` — 홈 대표 사진 포함으로 갱신됨 | 있음 |
+| `src/app/(frontend)/[...slug]/page.tsx` | `@MX:NOTE`(우선순위가 가장 낮아 `/admin`·`/api`를 가리지 않음, 실험 기능 안 씀) | 있음 |
+| `src/app/(frontend)/layout.tsx` 글꼴 | `@MX:NOTE`(원본 고정·OFL·무게 축·`preload: false` 이유·`(frontend)`에서만) | 있음 |
+| `src/components/HomeHero.tsx` 덮개 | `@MX:NOTE`(균일 덮개 0.65, 순백 위 5.24:1) | 있음 |
+| `src/lib/catalog.ts` `toImage` | 직접 호출 2곳(`catalog.ts` `toCard`, `home-page.ts` `getHomePageData`) — fan_in 3 미만 | `@MX:ANCHOR` 붙이지 않음(plan.md M5 "3곳이 되면 검토" 조건 미충족) |
+
+모든 새 태그에 `[AUTO]` 접두어가 있고, 파일별 한도(ANCHOR 3·WARN 5·NOTE 10·TODO 5)를 넘는 파일이 없다. 이번 마일스톤에서 태그를 더하거나 지우지 않았다.
+
+**`TourImage.tsx` `priority`**: 이 SPEC 범위 밖이라 바꾸지 않았다. 빌드 출력의 `warn` 0줄로 새 경고가 없음을 확인했다.
+
+**문서 정리 이월 (manager-spec — 이 에이전트는 spec.md·plan.md·acceptance.md 본문을 고치지 않음)**
+
+- O2-2: REQ-LANDING-008의 "익명 접근 규칙으로만" 문구가 `mediaReadAccess` 내부의 `findGlobal`(`overrideAccess` 생략 = `true`, `req` 전달) 호출과 구분된다는 점을 문구에 드러낸다. 구현은 plan.md §B.2 근거대로이며 AC-LANDING-008 통합 시험이 "`req` 없이 부른 `home-settings` 호출 정확히 1회(`overrideAccess: false`, 사용자 없음)"로 판정해 통과했다 — 동작 변경 없이 문구만 맞추면 된다.
+- O2-3: plan.md §A.3 Tier M 근거의 중복 문장(“M으로 두는 이유”와 “plan-audit 1회차 O-1 뒤에도 M을 유지한다”가 같은 근거를 되풀이) 정리.
+- AC-LANDING-015 첫 명령(PowerShell `ConvertFrom-Json`)은 이 환경에서 자동 승인 분류기가 거부했다. 판정 조건이 같은 Node 명령으로 확인했으므로, 필요하면 acceptance.md에 동등한 Node 판정을 대안으로 적는 것을 검토한다.
+- AC-LANDING-016의 `applications WHERE email LIKE '%example.test'` 기준 `0`은 사용자의 개발용 신청 ID 2033 때문에 이 개발 DB에서 `1`이다(이 SPEC 시작 전부터 있던 행). SPEC-ADMIN-001과 같은 해석("증가 0")을 쓴다는 점을 수용 기준에 적을지 검토한다.
+
+**출시 전 점검 이월 (sync 단계가 출시 전 점검 목록으로 옮김)**
+
+- 바닥글 `개인정보 처리방침(준비 중)`을 처리방침 문서 링크로 교체 — 배포 SPEC
+- 운영 대표 사진 크기·형식 점검(`sharp` 없음, 원본 그대로 전송, 관리자 필드 설명으로만 안내) — 배포 SPEC
+- 업로드 저장소 전환 뒤 대표 사진 파일 주소(`serverURL`)와 익명 접근 재확인 — 배포 SPEC
+
+**후속 SPEC 후보 (범위 밖, §E.1과 같음)**: 글꼴 동적 분할본 검토, `TourImage.tsx`의 `priority` → `preload`, 홈용 6개만 읽는 질의.
+
+**잔여 위험**
+
+- 공유 개발 DB에 `home_settings` 테이블이 있다(M1). 이 SPEC 이전 코드로 개발 서버를 다시 시작하면 Payload 스키마 반영이 이 테이블을 지우려 할 수 있다.
+- `admin-ops.spec.ts:324`의 간헐 실패 후보(M2 기록) — M3 기록의 전체 E2E와 이번 세션의 전체 E2E 2회(M4 `e2e-full.log`, M5 `e2e.log`)에서는 다시 나타나지 않았다.
+- 실제 사진 위 0.65 덮개의 인상(R8)과 관리자 화면 사진 올리기 흐름은 사람 확인 전이다(PENDING-human 2건).
+
+### 최종 AC 판정표 (AC-LANDING-001 ~ 016)
+
+| AC | 상태 | 확인 명령 | 근거(이번 M5 실행) |
+|---|---|---|---|
+| AC-LANDING-001 | PASS | `pnpm test` | `tests/integration/home-settings.spec.ts` "AC-LANDING-001" 4개 — `Tests  659 passed (659)` 안 |
+| AC-LANDING-002 | PASS (자동) · PENDING-human (수동 1건) | `pnpm test`, `pnpm e2e` | 통합 3개(M1) + `home-admin.spec.ts` 3개(REST·GraphQL·관리자 화면) — `94 passed` 안. 수동: 관리자 화면에서 사진 올려 고르기·비우기 |
+| AC-LANDING-003 | PASS | `pnpm test`, `pnpm e2e` | 통합 1~4단계(M1) + `home-admin.spec.ts` 파일 주소 200·`image/png` → 비운 뒤 200 아님. 기존 AC-TOUR-006 계속 통과 |
+| AC-LANDING-004 | PASS | `pnpm test`, `pnpm e2e` | 단위(M1) + `home.spec.ts` 3개(M3) |
+| AC-LANDING-005 | PASS | `pnpm test`, `pnpm e2e` | 통합 (c)·단위 (d)(M1) + `home.spec.ts` (a)(b)(c)(M3) |
+| AC-LANDING-006 | PASS | `pnpm test`, `pnpm e2e` | `contrast.spec.ts` 14.91·5.24·16.83·15.46·5.24·2.65 + `home.spec.ts` 색·포커스·포인트 색 0건 |
+| AC-LANDING-007 | PASS | `pnpm test`, `pnpm e2e` | 단위 0·3·6·8개, 통합 앞 6개·남은 자리·비공개 제외·빈 목록 렌더링, `home.spec.ts` 카드 순서·문구 |
+| AC-LANDING-008 | PASS | `pnpm test` | `home-page.spec.ts` 질의 수 같음·connect = query·`req` 없는 `home-settings` 조회 1회 |
+| AC-LANDING-009 | PASS | `pnpm e2e` | `layout.spec.ts` "AC-LANDING-009" 3개 |
+| AC-LANDING-010 | PASS | `pnpm e2e` | `layout.spec.ts` "AC-LANDING-010" |
+| AC-LANDING-011 | PASS | `pnpm e2e` | `layout.spec.ts` "AC-LANDING-011" 4개 + 기존 관리자 E2E 4개 파일 통과(`94 passed`) |
+| AC-LANDING-012 | PASS | `pnpm test`, `pnpm e2e` | 저장소 규칙 5개(크기 2,057,688·SHA-256 `9599f12f…00b4`·OFL·import 위치·의존성) + `layout.spec.ts` 글꼴 2개 |
+| AC-LANDING-013 | PASS (자동) · PENDING-human (수동 1건) | `pnpm e2e` | `responsive.spec.ts` 4개(1440 값, 375 본문·가로 스크롤·터치 영역). 수동: 스크린숏·실제 화면으로 디자인 방향 확인 |
+| AC-LANDING-014 | PASS | `pnpm e2e` | `layout.spec.ts` "AC-LANDING-014" 6개 + `home.spec.ts` 홈 `h2`·카드 `h3` |
+| AC-LANDING-015 | PASS | `pnpm build` + 매니페스트, `pnpm test`, `pnpm e2e` | `routes has /: true`, `prerender has /: false`, `prerender has /tours: false`, 저장소 규칙(`connection`·`await`, `generateStaticParams` 없음), `home.spec.ts` 새로고침 반영 |
+| AC-LANDING-016 | PASS | `pnpm test`, `pnpm e2e`, 잔여 SQL | 두 명령 종료 0, `src/lib` 줄 커버리지 99.35%, 스크린숏 10개 > 0바이트, 원래 값 파일 없음, 잔여 `0/0/1(ID 2033, 사용자 개발 신청)/0/0`, 각 시험 파일 `afterAll` 복원 `toEqual` 통과 |
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<pending run-phase — manager-develop>_
+```yaml
+run_complete_at: 2026-11-17
+run_commit_sha: pending-backfill   # M5 커밋 자기 SHA는 같은 커밋에 쓸 수 없음 — 오케스트레이터/sync 단계가 기록
+run_base_head: 928bcd2             # M3 병합(main)
+run_status: complete-pending-human # 자동 검증 전부 통과, 사람 확인 2건 남음(아래)
+milestone_commits: [M1 cb480c6, M2 b82065b, M3 928bcd2, M4 019f6f4, M5 pending-backfill]
+m1_to_mN_commit_strategy: "마일스톤마다 격리 작업 트리에서 커밋 1개 → 오케스트레이터가 main에 fast-forward 병합(푸시는 오케스트레이터)"
+ac_pass_count: 16          # 자동 판정 부분 기준
+ac_fail_count: 0
+ac_pending_human:
+  - "AC-LANDING-002 (수동) 관리자 화면에서 사진을 올려 대표 사진으로 고르고 저장·비우기"
+  - "AC-LANDING-013 (수동) 1440·375 스크린숏과 실제 화면으로 디자인 방향 확인"
+tests:
+  unit_integration: "pnpm test → exit 0, Test Files 43 passed (43), Tests 659 passed (659) (기준선 609)"
+  e2e: "pnpm e2e → exit 0, 94 passed (1.9m) (기준선 60)"
+  coverage_lines_src_lib: "99.35% (임계값 85%)"
+quality_gate:
+  typecheck: 0
+  build: 0
+  lint: 0
+  format_check: 0
+  generated_files_drift: none   # generate:types·generate:importmap 뒤 git status 출력 없음
+build_manifest: { routes_has_root: true, prerender_has_root: false, prerender_has_tours: false }
+mutation_checks:
+  m4_home_settings_update_open: "FAIL as expected (REST 403→200, GraphQL errors []) → restored PASS"
+  m4_media_read_drop_home_hero: "FAIL as expected (file URL 200→403) → restored PASS"
+  m4_tokens_body_18px_touch_40px: "FAIL as expected (17px→18px, 44→40) → restored PASS (9 passed)"
+preserve_list_post_run_count: 0   # git diff --stat b8087f8 -- (plan.md §E-2 보존 목록) → 출력 없음
+leftover_data: "tours_test=0, media_test=0, users_example_test=0, home_settings_test=0, applications_example_test=1 (= 기존 개발 신청 id 2033, 증가 0)"
+home_settings_original_restored: "[{id:1, hero_image_id:null, headline:null, intro:null}] — M1 직후 값과 같음, 원래 값 파일 없음"
+screenshots: ".moai/state/verify/landing/ 10개 (gitignore 대상)"
+new_warnings_or_lints_introduced: 0
+new_dependencies: 0
+cross_platform_build:
+  windows_git_bash: "pnpm build exit 0"
+  other_os: not-run   # Windows 개발 환경만 확인. CI 결과는 오케스트레이터 몫
+l44_pre_commit_fetch: not-run   # 격리 작업 트리 에이전트 — 원격 동기화·푸시는 오케스트레이터
+l44_post_push_fetch: not-run    # 푸시하지 않음(지시)
+total_run_phase_files: 32       # git diff --name-only 4eac201..019f6f4 (M5는 progress.md만 수정 — 이미 포함)
+doc_carry_over_for_manager_spec: [O2-2 REQ-LANDING-008 문구, O2-3 Tier M 근거 중복, AC-LANDING-015 Node 대안 명령, AC-LANDING-016 ID 2033 해석]
+status_frontmatter: in-progress  # implemented/completed 전환은 sync(manager-docs) 몫
+```
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
