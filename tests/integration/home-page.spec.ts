@@ -3,9 +3,13 @@
 // AC-LANDING-008: 질의 수가 공개 투어 수와 무관하고 연결 풀만 쓰며, 전역 설정 조회는 익명 규칙으로 한 번만 한다.
 // 이 파일은 전역 설정을 바꾸지 않는다(바꾸는 시험은 home-settings.spec.ts에 모음 — plan.md §B.11).
 // 개발 DB의 실제 공개 투어가 섞이므로 기대값은 같은 시점의 listPublishedTours 결과로 정한다.
+// M3: 빈 추천 목록 렌더링(AC-LANDING-007 — 공유 개발 DB에서 E2E로 재현할 수 없어 서버 구성 요소를 직접 그린다, plan.md §G R14).
 import { getPayload, type Payload } from 'payload'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { RecommendedTours } from '../../src/components/RecommendedTours'
 import { listPublishedTours } from '../../src/lib/catalog'
 import { getHomePageData } from '../../src/lib/home-page'
 import config from '../../src/payload.config'
@@ -123,6 +127,30 @@ describe('홈 화면 데이터(실제 DB)', () => {
       expect(home.headline.length).toBeGreaterThan(0)
       expect(typeof home.intro).toBe('string')
       expect(home.intro.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('AC-LANDING-007 추천 투어 영역 렌더링', () => {
+    it('투어 0개이면 안내 문구와 /tours 링크가 있고 카드가 없다', () => {
+      const html = renderToStaticMarkup(createElement(RecommendedTours, { tours: [] }))
+
+      expect(html).toContain('지금은 공개된 투어가 없습니다.')
+      expect(html).toContain('href="/tours"')
+      expect(html).toContain('투어 전체 보기')
+      expect(html).not.toContain('<article')
+    })
+
+    it('투어가 있으면 영역 제목 추천 투어는 h2이고 카드 제목은 h3이다', async () => {
+      const tours = (await listPublishedTours(payload)).slice(0, 2)
+      expect(tours.length, '공개 투어가 2개 이상 있어야 한다(위 준비 단계의 표식 투어)').toBe(2)
+
+      const html = renderToStaticMarkup(createElement(RecommendedTours, { tours }))
+
+      expect(html).toMatch(/<h2[^>]*>추천 투어<\/h2>/)
+      expect(html.match(/<h2/g)).toHaveLength(1)
+      expect(html.match(/<article/g)).toHaveLength(2)
+      expect(html.match(/<h3/g)).toHaveLength(2)
+      expect(html).not.toContain('지금은 공개된 투어가 없습니다.')
     })
   })
 

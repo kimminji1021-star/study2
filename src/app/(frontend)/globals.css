@@ -25,6 +25,12 @@
   outline: none;
 }
 
+/* 짙은 면(홈 히어로) 안의 포커스 외곽선은 흰색이다. accent는 짙은 면 위 2.65:1이라 UI 기준 3:1에 못 미친다(SPEC-LANDING-001 plan.md §B.5).
+   두께 2px·간격 2px는 전역 규칙 그대로 두고 색만 바꾼다. 전역 :focus-visible(계층 밖)을 이기려고 이 규칙도 계층 밖에 둔다 */
+[data-on-dark] :focus-visible {
+  outline-color: var(--on-dark);
+}
+
 /* 동작 줄이기를 설정한 방문자에게는 전환·애니메이션을 사실상 없앤다(SPEC-LANDING-001 REQ-LANDING-014, plan.md §B.9).
    기존 화면의 transition-colors도 이 규칙을 따른다. 기본 설정의 방문자에게는 아무것도 바뀌지 않는다 */
 @media (prefers-reduced-motion: reduce) {

@@ -8,8 +8,10 @@ import { tourStatusBadge } from '../lib/status-badge'
 import { StatusBadge } from './StatusBadge'
 import { TourImage } from './TourImage'
 
-export function TourCard({ tour }: { tour: TourListItem }) {
+// 제목 단계는 놓이는 화면의 제목 구조에 맞춘다. /tours는 h2(기본값), 홈은 영역 제목 "추천 투어"(h2) 아래라 h3(SPEC-LANDING-001 plan.md §B.10)
+export function TourCard({ tour, headingLevel = 'h2' }: { tour: TourListItem; headingLevel?: 'h2' | 'h3' }) {
   const { nearestSession } = tour
+  const Heading = headingLevel
 
   return (
     // 카드는 그림자 없이 가는 테두리(--color-divider)와 큰 모서리(--radius-lg)로 구분한다(2026-11-16 디자인 방향 갱신)
@@ -17,11 +19,11 @@ export function TourCard({ tour }: { tour: TourListItem }) {
       <TourImage image={tour.heroImage} />
       <div className="flex flex-1 flex-col gap-(--space-2) p-(--space-6)">
         <StatusBadge badge={tourStatusBadge({ hasSelectableSession: nearestSession !== null })} />
-        <h2 className="text-(length:--text-h3) leading-(--leading-h3) font-semibold tracking-(--tracking-h3)">
+        <Heading className="text-(length:--text-h3) leading-(--leading-h3) font-semibold tracking-(--tracking-h3)">
           <Link href={`/tours/${tour.slug}`} className="after:absolute after:inset-0">
             {tour.title}
           </Link>
-        </h2>
+        </Heading>
         <p className="text-(--color-text-2)">{tour.summary}</p>
         <p className="text-(length:--text-small)">
           {formatDuration(tour.durationMinutes)} · {tour.priceNote}

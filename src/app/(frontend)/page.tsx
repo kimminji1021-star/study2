@@ -1,17 +1,25 @@
-// 임시 홈 페이지 — 실제 홈 화면 디자인 전까지 쓰는 안내 페이지. 투어 목록(/tours)으로 가는 링크를 둔다(SPEC-TOUR-001 AC-TOUR-015).
-import Link from 'next/link'
+// 홈 / — SPEC-LANDING-001 REQ-LANDING-004·005·007·015. 짙은 히어로 → 흰 추천 투어(→ 레이아웃의 연회색 바닥글).
+// 요청마다 렌더링한다: 관리자가 홈 화면 설정을 바꾸거나 회차가 지나면 다음 요청에 바로 반영되어야 한다(AC-LANDING-015).
+// 데이터는 홈 화면 데이터 모듈(src/lib/home-page.ts)만 거쳐 읽는다 — 그 모듈이 익명 접근 규칙(overrideAccess: false)을 강제한다.
+import config from '@payload-config'
+import { connection } from 'next/server'
+import { getPayload } from 'payload'
 
-export default function HomePage() {
+import { HomeHero } from '../../components/HomeHero'
+import { RecommendedTours } from '../../components/RecommendedTours'
+import { getHomePageData } from '../../lib/home-page'
+
+export default async function HomePage() {
+  // 사전 렌더링을 여기서 멈춘다(빌드 결과의 prerender-manifest에 /가 없어야 한다)
+  await connection()
+
+  const payload = await getPayload({ config })
+  const { headline, intro, heroImage, recommendedTours } = await getHomePageData(payload)
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
-      <h1 className="text-4xl font-bold">숨비투어</h1>
-      <p className="text-lg text-gray-600">서비스를 준비 중입니다.</p>
-      <Link
-        href="/tours"
-        className="inline-flex min-h-(--button-height) items-center rounded-(--radius-sm) bg-(--color-accent) px-(--space-6) font-semibold text-white hover:bg-(--color-accent-hover)"
-      >
-        투어 둘러보기
-      </Link>
+    <main className="w-full">
+      <HomeHero headline={headline} intro={intro} image={heroImage} />
+      <RecommendedTours tours={recommendedTours} />
     </main>
   )
 }

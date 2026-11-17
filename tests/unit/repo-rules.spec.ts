@@ -715,7 +715,12 @@ describe('AC-TOUR-014 디자인 토큰 적용 범위', () => {
 
 // SPEC-TOUR-001 AC-TOUR-013 — 데이터를 읽는 두 페이지는 요청 시점에 렌더링한다(plan.md §B.3, R10).
 // 상세 경로는 generateStaticParams가 없으면 사전 렌더링 목록에 원래 나타나지 않으므로, 판정은 이 규칙이 맡는다.
-const DATA_PAGES = ['src/app/(frontend)/tours/page.tsx', 'src/app/(frontend)/tours/[slug]/page.tsx'] as const
+// SPEC-LANDING-001 AC-LANDING-015: 홈(/)도 홈 화면 설정과 추천 투어를 읽으므로 같은 규칙을 따른다(SPEC-TOUR-001의 "/ 사전 렌더링" 단언 대체)
+const DATA_PAGES = [
+  'src/app/(frontend)/page.tsx',
+  'src/app/(frontend)/tours/page.tsx',
+  'src/app/(frontend)/tours/[slug]/page.tsx',
+] as const
 const CONNECTION_IMPORT = /\bimport\s*\{[^}]*\bconnection\b[^}]*\}\s*from\s*['"]next\/server['"]/
 const CONNECTION_CALL = /\bawait\s+connection\(\s*\)/
 

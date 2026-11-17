@@ -238,6 +238,97 @@ x  20 … AC-LANDING-014 … › /tours에서 동작 줄이기를 켜면 …
 - 첫 커밋 시도는 PC가 꺼지며 끊겼다(pre-commit 훅이 실패 문구 없이 종료, `HEAD`는 `cb480c6` 그대로). 2026-11-17 재시작 뒤(PostgreSQL 컨테이너 재시작, `postgres healthy`) 글꼴 크기·SHA-256(위 표와 같음)을 다시 확인하고 게이트를 처음부터 다시 돌렸다: `pnpm typecheck` 종료 0, `pnpm build` 종료 0, `pnpm test` 종료 0 `Tests  646 passed (646)`, `pnpm e2e` 종료 0 `77 passed (1.8m)`, `pnpm lint` 종료 0, `pnpm format:check` 종료 0, 보존 diff 출력 없음, 표식 잔여는 위와 같음(`resume-*.log`).
 - 같은 첫 실행의 나머지 실패 하나는 `admin-ops.spec.ts:324`(요청 사항 삭제 뒤 상세 화면 다시 열기)의 `page.goto: net::ERR_ABORTED`였다 — 관리자 화면((payload) 레이아웃, 이 마일스톤과 무관)에서 삭제 직후 화면 자체 이동과 테스트의 이동이 겹친 것으로 보이며, 다시 돌린 실행에서는 통과했다(`ok 13 … (9.3s)`). 간헐 실패 후보로 기록한다(잔여 위험).
 
+### M3 — 홈 화면: 히어로와 추천 투어 (2026-11-17, 기준 HEAD `b82065b`)
+
+긴 출력: `.moai/state/verify/landing-m3/*.log`(gitignore 대상).
+
+**RED** (구현 전)
+
+단위·통합(`npx vitest run --coverage.enabled=false tests/unit/contrast.spec.ts tests/unit/repo-rules.spec.ts tests/integration/home-page.spec.ts`, 종료 1, `red-vitest.log`):
+
+```
+ FAIL  |integration| tests/integration/home-page.spec.ts [ tests/integration/home-page.spec.ts ]
+Error: Cannot find module '../../src/components/RecommendedTours' imported from …/tests/integration/home-page.spec.ts
+ FAIL  |unit| tests/unit/contrast.spec.ts > AC-LANDING-006 … > 덮개 토큰은 rgba(29, 29, 31, 0.65)이고, 순백 위 합성색은 반올림하지 않은 rgb(108.1, 108.1, 109.4)다
+AssertionError: expected { r: 29, g: 29, b: 31, a: 0.6 } to deeply equal { r: 29, g: 29, b: 31, a: 0.65 }
+ FAIL  |unit| tests/unit/contrast.spec.ts > AC-LANDING-006 … > 흰 글자(--on-dark) / 덮개 최악 배경 = 5.24이고 본문 기준 4.5 이상이다
+AssertionError: expected 4.45 to be 5.24 // Object.is equality
+ FAIL  |unit| tests/unit/contrast.spec.ts > AC-LANDING-006 … > 흰 버튼 경계·포커스 외곽선 / 덮개 최악 배경 = 5.24이고 UI 기준 3 이상이다
+AssertionError: expected 4.45 to be 5.24 // Object.is equality
+ FAIL  |unit| tests/unit/repo-rules.spec.ts > AC-TOUR-013 요청 시점 렌더링 > src/app/(frontend)/page.tsx는 next/server의 connection을 import하고 await로 호출한다
+AssertionError: expected '// 임시 홈 페이지 — 실제 홈 화면 디자인 전까지 쓰는 안내 페…' to match /\bimport\s*\{[^}]*\bconnect…/server['"]
+ Test Files  3 failed (3)
+      Tests  4 failed | 76 passed (80)
+```
+
+같은 RED에서 14.91·16.83·15.46·2.65 사례는 이미 통과했다 — 토큰 값이 바뀌지 않은 쌍이고, 계산 도우미가 plan.md §B.5 수치를 그대로 재현함을 보여 준다(0.6 → 4.45도 계획 표와 같음).
+
+E2E(`pnpm exec playwright test tests/e2e/home.spec.ts`, 종료 1, `red-e2e.log`, `9 failed`, `2 passed (2.9m)`) — 발췌:
+
+```
+x 1 … AC-LANDING-004 … › 설정이 비면 h1 → 소개 → 투어 둘러보기 순서로 …   Expected: 1  Received: 0   (h1을 담은 section 없음)
+x 2 … AC-LANDING-004 … › 사용자 문구는 …   Expected: "test-f21c6fec <b>굵게</b>"
+x 3 … AC-LANDING-004 … › 홈 화면에 임시 홈의 준비 중 안내가 없다   Expected: 0  Received: 1
+x 4 … AC-LANDING-005 … › (a) …   Expected: "rgb(39, 39, 41)"
+x 5 … AC-LANDING-005 … › (b) …   Expected: 1  Received: 0
+x 7 … AC-LANDING-006 … › …   Expected: "rgba(29, 29, 31, 0.65)"
+x 8 … AC-LANDING-007 … › …   Expected: 1  Received: 0
+x 9 … AC-LANDING-014 … › …   Expected: >= 1  Received: 0
+x10 … AC-LANDING-015 … › …   Expected: "제주를 가장 가까이, 숨비투어"  Received: "숨비투어"
+```
+
+통과한 2개는 (c)(이미지 0개 — 임시 홈에도 이미지가 없어 "바뀌면 안 되는 것" 쪽 단언)와 스크린숏 생성(단언 없음)이다. RED 실행 뒤에도 원래 값 파일은 남지 않았다(복원 확인 뒤 삭제).
+
+**GREEN** — 단위·통합 같은 명령 종료 0, `green-vitest.log`: `Test Files  3 passed (3)`, `Tests  86 passed (86)`. E2E 같은 명령: 첫 실행 `10 passed`·`1 failed`(`green-e2e.log`) — 실패는 시험 코드의 선택자 결함(`cardOf`가 `has:`에 바깥 범위에서 만든 로케이터를 넘겨 절대 경로가 됨, `locator.innerText` 시간 초과)이라 CSS `article:has(a[href="/tours/<slug>"])`로 고쳤다. 다시 돌린 실행 종료 0, `11 passed (24.4s)`(`green-e2e-2.log`).
+
+**구현**
+
+- `src/components/HomeHero.tsx`: `section[aria-labelledby=hero-heading][data-on-dark]`, 바탕 `--surface-dark`. 사진이 있으면 `next/image`(`fill`·`unoptimized`·`preload`·`sizes="100vw"`·`object-cover`, `alt` = 미디어 alt) + `div[data-hero-overlay]`(`--overlay-photo`, `@MX:NOTE` 대비 수치). 사진이 없으면 두 층 모두 그리지 않음. `h1#hero-heading`(`--text-display`·600·`--tracking-display`) → 소개 `p`(`--text-h3`, 흰색) → `투어 둘러보기`(`/tours`, 흰 알약·짙은 글자, hover `--color-surface`, `min-h` 48px). PC `min-height: min(88vh, 760px)`, 모바일은 내용 높이 + 위아래 80px
+- `src/components/RecommendedTours.tsx`: 흰 면, 가운데 `h2#recommended-heading` `추천 투어`, 카드 격자(`/tours`와 같은 `sm:2열·lg:3열`) `TourCard headingLevel="h3"`, 0개면 `지금은 공개된 투어가 없습니다.`, 아래 가운데 `투어 전체 보기`(`/tours`, 테두리 알약, 포인트 색 — 흰 면 5.63:1)
+- `src/components/TourCard.tsx`: `headingLevel?: 'h2' | 'h3'`(기본 `h2`)만 더함. 문구·스타일 불변
+- `src/app/(frontend)/page.tsx`: `await connection()` → `getHomePageData(payload)` → `<main>` 안에 히어로·추천 투어. `generateStaticParams` 없음
+- `tokens.css`: `--overlay-photo` 0.6 → `rgba(29, 29, 31, 0.65)`(주석에 5.24·4.45 수치), `--surface-dark`·`--on-dark`·`--on-dark-2`·accent 경고 주석을 이 결정으로 갱신
+- `globals.css`: `[data-on-dark] :focus-visible { outline-color: var(--on-dark) }`(계층 밖 — 전역 `:focus-visible`이 계층 밖이라 Tailwind 유틸리티로는 덮을 수 없음). 두께·간격은 전역 규칙 그대로
+- 시험: `tests/unit/contrast.spec.ts` + `tests/helpers/contrast.ts`(WCAG 공식, 반올림하지 않는 덮개 합성, `tokens.css` 사용자 정의 속성 읽기), `tests/helpers/home-fixtures.ts`(순백 1×1 PNG 바이트 상수 — RGB 8비트, `setHomeSettings`), `tests/integration/home-page.spec.ts`에 영역 렌더링 2개(`renderToStaticMarkup` — `next/link` 포함 그대로 그려져 R14 대안 불필요), `tests/unit/repo-rules.spec.ts` `DATA_PAGES`에 홈 추가, `tests/e2e/home.spec.ts` 전체 재작성(임시 홈 단언 3개 제거 → 11개)
+- `tests/e2e/home.spec.ts`는 `beforeAll`에서 원래 값을 먼저 저장하고, `afterAll`에서 되돌린 뒤 `toEqual` 단언 → 표식 정리 순서. `payload.destroy()`는 부르지 않음(M2 교훈). 뷰포트 1440×900 고정
+
+**AC 상태 (M3 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-LANDING-004 (E2E 부분) | PASS | `home.spec.ts` "AC-LANDING-004" 3개 — 기본 문구·문서 순서·`href`·이동, `<b>` 미해석·공백 제거, `서비스를 준비 중입니다` 없음 |
+| AC-LANDING-005 (a)(b)(c) E2E | PASS | 같은 파일 "AC-LANDING-005" 3개 — (a) img 0·`rgb(39, 39, 41)`·`head link[rel=preload][as=image]` 0·h 파일 요청 0, (b) img 1·alt·응답 모두 200·`naturalWidth` > 0·**h 파일 이름이 든 preload 링크 1개 이상(O2-1 반영)**, (c) 미디어 삭제 뒤 img 0·200 |
+| AC-LANDING-006 | PASS | 단위 `contrast.spec.ts` 6개(14.91·5.24·16.83·15.46·5.24·2.65, 합성색 108.1/108.1/109.4) + E2E 1개(덮개 `rgba(29, 29, 31, 0.65)`, h1·소개 흰색, 버튼 흰 바탕·`rgb(29, 29, 31)`, Tab 포커스 `solid`·흰색·2px 이상, 히어로 요소 3개 이상 중 `rgb(0, 115, 122)` 0건) |
+| AC-LANDING-007 (렌더링·E2E 부분) | PASS | 통합 2개(0개 → 문구·`href="/tours"`·`<article` 없음 / 2개 → `h2` 1·`article` 2·`h3` 2) + E2E 1개(카드 수·제목 순서 = `listPublishedTours` 앞 6개, 카드 문구가 `/tours` 같은 투어 카드와 같음, `투어 전체 보기` `/tours`·이동, 비공개 표식 투어 없음, `h2`는 `추천 투어` 하나) |
+| AC-LANDING-014 (홈 부분) | PASS | E2E — `/` 카드 `h3` 수 = 카드 수·`h2` 0, `/tours` 카드 `h2` 수 = 카드 수·`h3` 0. 공통 부분(M2)의 `/` 본문 바로가기 → 다음 Tab `투어 둘러보기` 사례도 전체 E2E에서 통과 |
+| AC-LANDING-015 | PASS | 매니페스트(아래) + 저장소 규칙(`page.tsx` `connection` import·`await`, `generateStaticParams` 없음) + E2E 새로고침 반영 1개(M4 계획 항목이지만 같은 파일에 넣음) |
+
+**빌드 매니페스트 (AC-LANDING-015)** — `pnpm build` 직후 Node로 같은 판정(PowerShell 명령과 같은 조건): `routes has /: true`, `prerender has /: false`, `prerender has /tours: false`. 경로 표 `┌ ƒ /`(M2의 `○ /`에서 바뀜). 빌드 출력에 `warn` 0줄(`TourImage`의 `priority`를 포함해 새 경고 없음).
+
+**M3 품질 게이트** (같은 작업 트리, 순서대로)
+
+| 점검 | 명령 | 결과 |
+|---|---|---|
+| 생성 파일 | `pnpm generate:types` | 종료 0, `git status`에 `src/payload-types.ts` 변경 없음 |
+| 타입 | `pnpm typecheck` | 종료 0 |
+| 빌드 | `pnpm build` | 종료 0 (`ƒ /`) |
+| 단위·통합 | `pnpm test` | 종료 0, `Test Files  43 passed (43)`, `Tests  659 passed (659)` (646 + 대비 9 + 저장소 규칙 2 + 렌더링 2), `All files` 줄 커버리지 99.35% |
+| E2E | `pnpm e2e` | 종료 0, `85 passed (1.9m)` (77 − 임시 홈 3 + `home.spec.ts` 11) |
+| 린트 | `pnpm lint` | 종료 0 |
+| 포맷 | `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| 보존 | `git diff --stat b8087f8 -- pnpm-lock.yaml package.json .prettierignore eslint.config.mjs pnpm-workspace.yaml .gitattributes src/lib/occupancy.ts src/lib/session-availability.ts src/lib/catalog-order.ts src/lib/submit-application.ts` | 출력 없음 |
+| 표식 잔여 | Node `pg` 스크립트(AC-LANDING-016 SQL 조건) | `tours test-%: 0`, `media test-%: 0`, `users @example.test: 0`, `home_settings test-%: 0`, `applications example.test: 1`(ID 2033 — 사용자의 개발용 신청) |
+| 설정 복원 | 같은 스크립트 | `home_settings` `[{"id":1,"hero_image_id":null,"headline":null,"intro":null}]` — M1 직후 원래 값과 같음. 원래 값 파일 없음 |
+| `importMap.js` | — | 관리자 화면 구성 요소를 바꾸지 않아 다시 만들지 않음 |
+
+**스크린숏** (E2E 스크린숏 시험이 `.moai/state/verify/landing/`에 남김 — AC-LANDING-016 이름, 홈 4개. 같은 파일을 `.moai/state/verify/landing-m3/`에 복사): `home-dark-1440.png`, `home-dark-375.png`, `home-photo-1440.png`(순백 1×1 표식 사진 + 덮개 → 균일한 회색 히어로), `home-photo-375.png`. 나머지 6개(`/tours`·상세·404)는 M4. 화면 왼쪽 아래의 `N` 원형 표시는 `next dev` 개발 표시기다(운영 빌드에는 없음).
+
+**잔여 위험·메모**
+
+- 스크린숏의 사진 상태는 1×1 순백 PNG라 실제 사진의 인상(밝은 사진이 0.65 덮개로 어두워지는 정도 — R8)은 M4 수동 확인(실제 사진 업로드)에서 본다.
+- 추천 투어 E2E는 개발 DB의 실제 공개 투어와 섞이며 기대값을 같은 순간의 `listPublishedTours`로 정한다. 페이지 요청과 기대값 계산 사이에 회차 시각 경계를 넘으면 순서가 달라질 수 있다(회차는 하루 이상 뒤라 실제로는 일어나지 않음).
+- `tests/e2e/home.spec.ts`의 AC-LANDING-015 새로고침 시험은 plan.md M4 목록에 있던 항목이다 — M4에서 중복으로 만들지 않는다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase — manager-develop>_
