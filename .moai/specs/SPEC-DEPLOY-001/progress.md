@@ -442,9 +442,183 @@ $ CRON_SECRET= pnpm exec playwright test tests/e2e/deploy.spec.ts
 
 **Gaps(M5 로컬)**: ① 실제 배포 동작 전부(AC-013·014)는 사용자 단계 뒤에만 확인 가능. ② `engines.node`를 `^22.23.4 \|\| ^24.22.1`로 좁혔으므로 Vercel이 24.x를 고를 것으로 보지만, 범위 합집합에서 어느 주 버전을 고르는지는 문서에 없다 — 빌드 로그의 Node·pnpm 버전으로 확인(L1). ③ Cron 화면의 Run 버튼 유무는 문서에 없음. ④ 문서 확인은 `curl`로 받은 마크다운 본문이며 화면 캡처는 아님. ⑤ 커밋 여부는 오케스트레이터 보고 참고.
 
+### M5(실제 배포 확인) — 사용자가 확인한 결과 (2026-11-18, 사용자 관찰·사용자 보고)
+
+아래는 모두 사용자가 Vercel·Supabase 화면에서 보고 전한 내용이다. Claude는 운영 DB·저장소·Vercel 화면에 직접 접속하지 않았으며, 값(비밀값·키·연결 문자열)은 받지 않았다. 번호는 `plan.md` §I.2~§I.4 기준.
+
+**§I.2 첫 배포와 환경 변수**
+
+- 첫 가져오기(import) 배포는 설계대로 운영 점검에서 실패했다: `Missing required environment variables`. 빌드 로그에 pnpm `v11.28.9`, Next.js `16.4.5` 감지가 보였다.
+- 사용자가 Deployment Protection에서 **Vercel Authentication(All Deployments)**을 켰다.
+- 사용자가 Production 환경 변수 12개를 넣었다(비밀값은 Vercel Type **Secret**).
+- 다시 배포 두 번이 운영 점검에서 실패했다. 1번째는 `NEXT_PUBLIC_SERVER_URL`, `DATABASE_CA_CERT`, `S3_BUCKET`, `S3_ENDPOINT` … 를 나열(Config 묶음이 저장되지 않았음), 2번째는 `DATABASE_CA_CERT`만 나열(붙여 넣기 오류 — `.crt` 파일 내용으로 Config 유형으로 다시 넣음).
+- 3번째 다시 배포가 **READY**(1분 53초, 배포 `Ba7X194CF`). 빌드 경고 1건이 있으나 아직 읽지 않았다.
+- 운영 점검 실패 출력은 두 번 모두 **변수 이름만** 보였고 값은 보이지 않았다 — AC-DEPLOY-001의 "이름만, 값 미포함"이 실제 Vercel 빌드에서도 성립함을 사용자가 확인한 셈이다.
+
+**§I.3 처음 들어가기**: 시크릿 창에서 사이트 주소를 열면 Vercel 로그인 화면이 나왔다(보호 동작). 사용자가 첫 관리자 계정을 만들었고 관리자 대시보드가 열렸다.
+
+**§I.4 확인 절차**
+
+| §I.4 | 확인 | 사용자 보고 | 상태 |
+|---|---|---|---|
+| 0 | 함수 리전 `icn1` | 아직 확인 안 함 | PENDING(대기) |
+| 1 | 사진 업로드·안내 문구 | PNG 3MB(1536×1024) 1장 업로드 → S3 저장소에 저장, 미리보기 표시. 미디어 화면에 "실제 사이트에서는 4MB 이하" 안내 표시 | 확인됨(1장 — 숨김용 2번째 사진은 3번과 함께 대기) |
+| 2 | 투어 공개·회차 | 투어 "제주 오름 투어"(slug `jeju-tour1`) 공개, 회차 2026-12-01 13:00 정원 10 열림. `/tours/jeju-tour1`이 사진·회차와 함께 표시 | 확인됨 |
+| 3 | 쓰이지 않은 사진 주소 오류·홈 대표 사진 | 아직 확인 안 함 | PENDING(대기) |
+| 4 | 신청 1건 | 접수 완료 화면 | 확인됨 |
+| 5 | 관리자 확정 | 확정으로 저장 | 확인됨 |
+| 6 | 참가자 CSV | 대시보드에서 내려받음 | 확인됨 |
+| 7 | Cron 수동 실행 | Vercel에서 `/api/cron/cleanup` Run → 요청 로그 상태 **200**. 실행 로그는 WARN `No email adapter provided` 하나뿐(이메일은 로드맵 뒤 항목이라 예상된 경고, §A.3 25번) | 확인됨 — **Cron이 Vercel 보호에 막히지 않음**(R1 해소, (가) 경로) |
+| 8 | 26시간 자동 정리 | 8-가 확인용 신청을 지금 진행 중. 26시간 뒤 8-다 결과 | PENDING(대기 — sync 단계가 결과를 기록) |
+| 9 | Supabase Data API 차단 | 아직 확인 안 함 | PENDING(대기) |
+
+- 확인용 데이터 이름에 `test-` 접두어를 쓰지 않았다(투어 "제주 오름 투어", 신청자 이름 등). §I.4 10번 정리 때 이름으로 골라내야 한다.
+
+**M5 대기 표(L0~L13)와의 대응**
+
+| # | 결과 |
+|---|---|
+| L0 | 미보고 — PENDING |
+| L1 | 부분 확인: pnpm `v11.28.9`, Next.js `16.4.5`, READY. **Node 버전 줄·마이그레이션 적용 줄·빌드 경고 1건 내용은 미보고** — PENDING |
+| L2 | 부분 확인: 시크릿 창 → Vercel 로그인 화면. 경로별(`/`, `/tours`, `/admin`, `/api/tours`, `/robots.txt`) `Invoke-WebRequest -MaximumRedirection 0` 상태 코드는 미보고 — PENDING |
+| L3 | 부분 확인: 로그인 브라우저에서 관리자 화면·`/tours/jeju-tour1` 정상 |
+| L4 | 확인됨: Vercel Authentication, All Deployments(사용자가 켬) |
+| L5 | PENDING(§I.4 0번) |
+| L6 | 확인됨 |
+| L7 | 부분 확인: 1장 저장·미리보기·안내 문구. Supabase `media` 버킷 목록 확인과 2번째 사진은 미보고 |
+| L8 | 부분 확인: 공개 투어 대표 사진 표시. 숨김 사진·홈 대표 사진 확인은 PENDING(§I.4 3번) |
+| L9 | 확인됨(신청 → 확정 → CSV) |
+| L10 | PENDING(§I.4 9번) |
+| L11 | 수동 실행 200 확인(막힘 아님). 26시간 결과 PENDING(§I.4 8번) |
+| L12 | 미보고 — PENDING(Fluid compute) |
+| L13 | PENDING — `test-` 접두어 없이 만든 데이터라 이름으로 정리 |
+
+**Vercel 화면이 `plan.md` §I와 다른 점 (manager-spec이 plan.md를 고칠 때 쓸 발견 사항 — 이 작업은 plan.md를 고치지 않음)**
+
+- 환경 변수 위치: **Settings → Environments → Production**(또는 왼쪽 메뉴 "Environment Variables").
+- 추가 대화 상자의 Type은 **"Secret"/"Config"** 둘이며, 한 번에 넣는 묶음 전체에 적용된다. "Sensitive" 켜기 칸은 없다(M5 문서 확인과 같은 결론).
+- 공개 CA 인증서(`DATABASE_CA_CERT`)는 Config 유형으로 넣어도 된다 — 비밀값이 아니다.
+- 묶음 저장이 실패하면(1번째 다시 배포) 그 묶음의 변수가 모두 빠진다 — 운영 점검이 이름 목록으로 알려 준다.
+
+### M6 — 품질 게이트, MX, 이월 정리 (2026-11-18, HEAD `e8ebe29` = `origin/main`, 작업 트리 `.claude/worktrees/agent-a327f4a5bdb7ec093`)
+
+**코드 변경 없음.** plan §F M6의 MX 태그 6종이 M1~M4에서 이미 들어가 있어 이번에 더한 태그가 없다(아래 표). 이 마일스톤의 변경은 이 `progress.md`뿐이다. 새 테스트가 없으므로 RED 출력도 없다.
+
+**품질 게이트 (`acceptance.md` §8, 한 커밋 `e8ebe29`에서 — 로그 `.moai/state/verify/deploy-m6/gate-*.log`)**
+
+순차 실행(plan §E-1): `pnpm install --frozen-lockfile` 종료 0(`Done in 28.2s using pnpm v11.28.9`, 새 작업 트리) → 아래 순서.
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| 생성 파일 | `pnpm generate:types` / `pnpm generate:importmap` | 각각 종료 0, 이어서 `git status --short` 출력 없음(차이 없음) |
+| 타입 | `pnpm typecheck` | 종료 0 |
+| 마이그레이션 | `pnpm migrate:check` → `git status --short src/migrations` | 종료 0, `[migrate:check] OK: no new migration for no-s3 and fake-s3.` / 출력 없음 |
+| 빌드 | `pnpm build` | 종료 0, `✓ Compiled successfully in 24.5s`, `ƒ /api/cron/cleanup`, `○ /robots.txt` |
+| 단위·통합·저장소 규칙 | `pnpm test` | 종료 0, `Test Files  53 passed (53)`, `Tests  815 passed (815)`(M5와 같음) |
+| 커버리지(`src/lib/**`, 임계값 lines 85 내장) | `pnpm test` | `Lines : 99.33% ( 745/750 )`, `Statements : 97.58% ( 888/910 )`, `Branches : 90.96% ( 594/653 )`, `Functions : 98.95% ( 190/192 )`. 100% 아닌 파일 `log-redaction.ts` 라인 97.82%(96행), `preflight.ts` 라인 100% |
+| E2E | `pnpm e2e` | 종료 0, `101 passed (2.3m)`(M5와 같음, 간헐 실패 없음) |
+| 린트 | `pnpm lint` | 종료 0, 경고 출력 없음(새 경고 0) |
+| 포맷 | `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| 의존성 | `git diff 0057e9d -- package.json` | 의존성: `+ "@payloadcms/storage-s3": "3.93.0"` 한 줄. 스크립트: `+ "migrate:check"` 한 줄. 그 밖: `engines.node` `>=26.0.0` 제거(M5 오케스트레이터 결정 — 의존성 아님) |
+| 보안 권고 | `pnpm audit --json` | 종료 1, `{"info":0,"low":0,"moderate":2,"high":3,"critical":0}` — M3·M4 재측정과 같은 5건(아래) |
+| 보존 | `git diff --stat 0057e9d -- .prettierignore eslint.config.mjs .gitattributes src/lib/occupancy.ts src/lib/session-availability.ts src/lib/catalog-order.ts src/lib/submit-application.ts src/lib/application-status.ts src/lib/clear-requests.ts src/lib/access.ts` | `.prettierignore \| 2 ++`, `eslint.config.mjs \| 2 ++`, `2 files changed, 4 insertions(+)` — M2의 범위 지정 예외(생성 마이그레이션 검사 제외)뿐. 잠금 구간·점유·정렬·접수·상태 변경·요청 사항 삭제·미디어 읽기 규칙 파일은 변경 없음 |
+| 비밀값 | AC-DEPLOY-015 ①②③ `git grep`, `git ls-files .vercel` | 네 명령 모두 출력 없음 |
+
+**표식 데이터 잔여 (컨테이너 안 psql, 사용자·DB 이름은 컨테이너 환경 변수에서 읽음 — 값 미출력)**
+
+| 질의 | 결과 |
+|---|---|
+| `application_attempts WHERE key_hash LIKE 'test-%'` | 0 |
+| `tours WHERE slug LIKE 'test-%'` | 0 |
+| `users WHERE email LIKE '%@example.test'` | 0 |
+| `applications WHERE email LIKE 'test-%'` | 0 |
+| `media WHERE filename LIKE 'test-%'` | 0 |
+| `pg_database WHERE datname LIKE 'sumbi_migration_check%'`(임시 확인 DB) | 0 |
+| `applications WHERE id = 2033`(기존 개발 신청 기준값) | 1 |
+
+**`pnpm audit --json` 권고 (2026-11-18, `audit.json`)** — 의존성 변경 없음, M3·M4와 같은 판단.
+
+| 권고 | 심각도 | 설치본 | 도달 경로 | 판단 |
+|---|---|---|---|---|
+| happy-dom GHSA-834v-8h66-3h79 | high | 20.14.6 | 3개 — `@payloadcms/richtext-lexical>@lexical/headless>happy-dom`, `@vitest/coverage-v8>vitest>happy-dom` 등 | 실행 경로 미도달 — `richText` 필드 없음, 나머지는 시험 도구 |
+| happy-dom GHSA-c8p4-j97h-3vg8 | high | 20.14.6 | 위와 같음 | 위와 같음 |
+| picomatch GHSA-fc5q-39xc-vjpf | high | 4.0.7·2.3.2 | 104개 — `payload>json-schema-to-typescript>tinyglobby>picomatch` 등 | 실행 경로 미도달 — 빌드·타입 생성·파일 감시·린트·시험 도구, 요청 입력이 글로브로 쓰이지 않음. 수정 버전 없음 |
+| esbuild GHSA-67mh-4wv8-2f99 | moderate | 0.18.20 | 1개 — `@payloadcms/db-postgres>drizzle-kit>…>esbuild` | 실행 경로 미도달 — 마이그레이션 생성 도구 |
+| minimatch GHSA-g3hv-75wg-m249 | moderate | 10.2.6 | 11개 — `eslint-config-next>…>minimatch` | 실행 경로 미도달 — 린트 도구 |
+
+실행 경로에 도달하는 high 이상 권고 없음 → 차단자 없음.
+
+**@MX 태그 점검 (plan §F M6 목록 — 모두 이미 있음, 추가 0·제거 0·갱신 0)**
+
+| plan 요구 | 위치 | 상태 |
+|---|---|---|
+| 정리 엔드포인트 `@MX:WARN` + `@MX:REASON` | `src/app/(payload)/api/cron/cleanup/route.ts:21-22` | 있음(M2) — 데이터 삭제 경로, 비밀값 검사 통과 요청만 실행 |
+| `runScheduledCleanup` `@MX:NOTE` | `src/lib/scheduled-cleanup.ts:48-50` | 있음(M2) — 72시간 근거(정상 최대 약 25시간 10분), 실제 현재 시각으로만 호출 |
+| 로그 가림 `@MX:NOTE` | `src/lib/log-redaction.ts:54` (+ `@MX:ANCHOR` 103-104) | 있음(M4) |
+| 풀 설정 `@MX:NOTE` | `src/lib/db-connection.ts:47-50` | 있음(M1) — 최소 3 이유(Payload 상시 점유 연결 1개), 인증서 없는 원격 거부 |
+| 루프백 점검 `@MX:ANCHOR` 검토 | `src/lib/preflight.ts:129-130` (`isLoopbackHost`) | 있음(M1). 호출자 3곳 확인: `db-connection.ts:25`(`isLoopbackDatabaseUrl`), `preflight.ts:155`(`assertLoopbackDatabase`), `preflight.ts:274`(`runPreflight`) → fan_in 3, ANCHOR 유지 |
+| `clientIpFromHeaders` `@MX:NOTE` | `src/lib/rate-limit.ts:16-18` | 있음(M4) — Vercel `x-forwarded-for` 덮어쓰기 |
+
+파일별 한도(ANCHOR 3·WARN 5·NOTE 10) 안: `preflight.ts` ANCHOR 3, `log-redaction.ts` ANCHOR 1.
+
+**AC 상태(M6 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-DEPLOY-016 | PASS | `pnpm test` 종료 0(815), `pnpm e2e` 종료 0(101), `src/lib` 라인 99.33% ≥ 85, `package.json` 의존성 변경은 `@payloadcms/storage-s3` `3.93.0` 한 줄 + `migrate:check` 스크립트(그 밖 `engines.node` 좁힘은 의존성 아님, M5 결정), `pnpm audit` 5건 도달 경로·판단 기록·실행 경로 high 없음, 표식 4종 질의 0(추가 2종도 0), 2033 기준값 존재 1 |
+| §8 품질 게이트 로컬 행 전부 | PASS | 위 표 — 같은 커밋 `e8ebe29` |
+
+**2단계(공개 출시 SPEC, 예: SPEC-LAUNCH-001)로 넘길 항목 — sync 단계가 옮긴다**
+
+- `plan.md` §A.3 "2단계" 행:
+  - 10번: 작업 기록 2년 보관 기준의 법률 확인(구현은 1단계에서 끝남)
+  - 14번: 운영 대표 사진 크기·형식 확인(실제 사진을 올릴 때)
+  - 15번: 바닥글 처리방침 링크
+  - 16번: 파비콘
+  - 18번: 처리방침 게시, 처리 위탁 공개, 국외 이전 공개, 보호책임자, 민감정보 삭제 절차, 시행 예정 개정 확인, 변호사 최종 확인
+  - 19번: Vercel Hobby 비상업 용도 한정, Supabase 무료 일시 중지에 대한 요금제 결정
+- Cron 보호 통과 결과: §I.4 7번 수동 실행이 **200**(보호에 막히지 않음, (가) 경로). 예약 실행이 실제로 도는지(§I.4 8번 26시간 결과 `0`)는 아직 대기 — 결과가 `0`이면 AC-DEPLOY-014 예약 정리 줄 (가) 통과, `1` 이상이면 (나) "막힘(Q6)" + §I.5 수동 정리 + 자동 삭제 확인을 2단계 출시 조건으로 옮긴다(plan §I.5 마지막 줄).
+- 동의 문구의 "늦어도 72시간 안에 삭제"와 작업 기록 2년 기준 문구의 변호사 확인.
+- 확인용 운영 데이터 정리 방침(§I.4 10번 — 신청은 관리자 화면에서 지울 수 없음, 이번 확인 데이터는 `test-` 접두어 없음).
+- 이월은 아니지만 sync 전에 확인할 대기 항목: §I.4 0·3·8·9번, L0·L1(Node 버전 줄, 마이그레이션 적용 줄, 빌드 경고 1건 내용)·L2(경로별 상태 코드)·L12(Fluid compute)·L13(정리).
+
+**Gaps(M6)**: ① 실제 배포 확인 중 위 대기 항목은 관찰되지 않았다 — AC-DEPLOY-013·014는 PASS로 적지 않는다. ② 실제 배포 결과는 모두 사용자 보고이며 Claude가 화면·로그를 직접 보지 않았다. ③ 3번째 배포의 빌드 경고 1건 내용 미확인. ④ 커버리지·테스트 수는 이 작업 트리의 로컬 Windows 실행 결과이며 CI는 이 SPEC 범위 밖. ⑤ `pnpm audit` 판단(실행 경로 미도달)은 도달 경로 목록에 근거한 판단이며 각 권고의 실제 악용 가능성은 시험하지 않았다.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
-_<pending run-phase>_
+```yaml
+run_status: audit-ready-except-pending-live   # 로컬 게이트·AC-001~012·015·016 통과. 실제 배포 대기 항목(아래)은 sync 단계가 결과를 받아 기록
+run_complete_at: 2026-11-18
+run_commit_sha: pending-backfill-m6   # M6 커밋은 자기 SHA를 알 수 없음 — 다음 커밋에서 채움. 로컬 게이트 기준 HEAD는 e8ebe29
+run_commits: [1dfe7dd, b3976bb, becc1a4, e8ebe29, pending-backfill-m6]
+m1_to_mN_commit_strategy: "마일스톤별 커밋 (M1, M2, M3·M4 묶음, M5, M6) — main 직접, Route A"
+ac_pass_count: 14   # AC-DEPLOY-001~012, 015, 016
+ac_fail_count: 0
+ac_pending_live: [AC-DEPLOY-013, AC-DEPLOY-014]   # 부분 확인(사용자 관찰) — §E.2 "M5(실제 배포 확인)"
+pending_live_checks:
+  - "§I.4 0 — 함수 리전 icn1"
+  - "§I.4 3 — 쓰이지 않은 사진 주소 오류·홈 대표 사진 공개 범위"
+  - "§I.4 8 — 26시간 자동 정리(8-가 신청 진행 중, 26시간 뒤 count = 0 확인)"
+  - "§I.4 9 — Supabase Data API 차단"
+  - "L0 main 외 가지 배포 없음, L1 빌드 로그 Node·마이그레이션 줄·빌드 경고, L2 경로별 상태 코드, L12 Fluid compute, L13 확인 데이터 정리"
+cron_protection_result: "수동 실행 200 — Vercel 보호에 막히지 않음 (예약 실행 동작은 §I.4 8 대기)"
+preserve_list_post_run_count: 2   # .prettierignore·eslint.config.mjs 각 +2줄(M2 범위 지정 예외), 그 밖 보존 파일 변경 0
+new_warnings_or_lints_introduced: 0
+quality_gate_head: e8ebe29
+coverage_src_lib_lines: "99.33% (745/750)"
+tests: {unit_integration: 815, e2e: 101}
+audit: {moderate: 2, high: 3, critical: 0, runtime_reachable_high: 0}
+cross_platform_build:
+  local_windows: "pnpm build 종료 0 (e8ebe29)"
+  vercel_linux: "사용자 보고 — 배포 Ba7X194CF READY(1m53s)"
+total_run_phase_files: 48   # git diff --shortstat 5b6c32a e8ebe29 (M6은 progress.md만 다시 바꿈)
+l44_pre_commit_fetch: not-run   # 이 작업 트리는 push하지 않음 — 오케스트레이터가 push 전 확인
+l44_post_push_fetch: not-run
+sync_handoff:
+  - "2단계 이월 목록(§E.2 M6) 옮기기"
+  - "plan.md §I Vercel 화면 차이(§E.2 M5 실제 배포 확인) — manager-spec 재위임"
+  - "대기 항목 결과 받아 AC-DEPLOY-013·014 판정"
+```
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
