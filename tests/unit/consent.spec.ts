@@ -29,8 +29,23 @@ describe('동의 문구(AC-APPLY-014)', () => {
     }
   })
 
-  it('필수 동의의 접속 IP 설명은 실제 동작(10분간 횟수 계산 뒤 다음 신청 처리 때 삭제)과 같다', () => {
-    expect(noticeText(REQUIRED_CONSENT)).toContain('10분간 신청 횟수를 세는 데만 쓰고 그 뒤 다음 신청 처리 때 삭제')
+  // SPEC-DEPLOY-001 REQ-DEPLOY-010(AC-DEPLOY-010): 예약 정리(매일 한 번)를 반영한 실제 최대 보관 시간과 변환 방식을 알린다
+  it('필수 동의의 접속 IP 설명은 비밀키 변환·원래 IP 미저장·매일 자동 삭제·최대 72시간을 담는다', () => {
+    const text = noticeText(REQUIRED_CONSENT)
+    for (const phrase of [
+      '비밀키로 변환한',
+      '원래 IP 주소는 저장하지 않음',
+      '매일 한 번 자동으로 지워',
+      '늦어도 72시간 안에 삭제',
+    ]) {
+      expect(text, phrase).toContain(phrase)
+    }
+  })
+
+  it('필수 동의는 예전 설명(다음 신청 처리 때 삭제)을 더 담지 않는다', () => {
+    const text = noticeText(REQUIRED_CONSENT)
+    expect(text).toContain('접속 IP')
+    expect(text).not.toContain('다음 신청 처리 때')
   })
 
   it('선택 동의 문구는 민감정보를 수집하지 않는다는 점, 파기 시점, 거부해도 신청할 수 있다는 사실을 담는다', () => {
@@ -53,9 +68,11 @@ describe('동의 문구(AC-APPLY-014)', () => {
 })
 
 describe('동의 문구 버전(REQ-APPLY-014: 문구가 바뀌면 버전도 바뀐다)', () => {
-  it('버전은 <날짜>.<해시 8자리> 형식이고 날짜는 문구를 확정한 2026-11-12다', () => {
+  // SPEC-DEPLOY-001 사용자 결정 D7(2026-11-17): IP 변환값 보관 문구를 확정한 날
+  it('버전은 <날짜>.<해시 8자리> 형식이고 날짜는 문구를 확정한 2026-11-17이며, 예전 버전 값이 아니다', () => {
     expect(PRIVACY_POLICY_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}\.[0-9a-f]{8}$/)
-    expect(PRIVACY_POLICY_VERSION.startsWith('2026-11-12.')).toBe(true)
+    expect(PRIVACY_POLICY_VERSION.startsWith('2026-11-17.')).toBe(true)
+    expect(PRIVACY_POLICY_VERSION).not.toBe('2026-11-12.99052510')
   })
 
   it('consentDocument()는 필수 → 선택 → 민감정보 안내 → 나이 안내 순서로 이어 붙인다', () => {

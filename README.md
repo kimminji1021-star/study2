@@ -204,3 +204,34 @@ pnpm format
 ```
 
 줄바꿈만 LF로 바뀌고 내용은 바뀌지 않는다. 이후 `git status`에 수정(`M`)으로 표시되는 파일이 남아도 `git diff`가 비어 있다면 실제 변경은 없는 것이다.
+
+## 10. 배포
+
+운영 배포는 Vercel(함수 리전 서울 `icn1`)과 Supabase(PostgreSQL·사진 저장소)를 쓴다. 설정은 저장소의 `vercel.json`에 있다.
+
+### 예약 정리
+
+Vercel Cron이 매일 한 번(UTC 18시대 = 한국 시각 오전 3시대) `GET /api/cron/cleanup`을 부른다. 이 경로는 `Authorization: Bearer <CRON_SECRET>` 머리글이 맞을 때만 동작하며, 다음 두 가지를 지운다.
+
+- 10분 지난 신청 시도 기록(접속 IP를 비밀키로 변환한 값, `application_attempts`)
+- 2년 지난 관리자 작업 기록(`admin_audit_logs`)
+
+응답은 지운 행 수 `{"attemptsDeleted": <수>, "auditLogsDeleted": <수>}`다. 여러 번 불러도 안전하다(지울 것이 없으면 두 값 모두 0).
+
+### 수동 정리(Cron이 동작하지 않을 때)
+
+자동 정리가 막히면 Supabase 대시보드의 **SQL Editor → New query**에 아래 SQL을 그대로 붙여 넣고 **Run**을 누른다. 결과 한 줄에 지운 행 수 두 개(`attempts_deleted`, `audit_logs_deleted`)만 나온다. 두 삭제를 한 문장으로 묶어, 편집기가 마지막 문장의 결과만 보여 주는 경우에도 두 값을 함께 볼 수 있게 했다.
+
+```sql
+with a as (
+  delete from application_attempts where attempted_at < now() - interval '10 minutes' returning 1
+), l as (
+  delete from admin_audit_logs where occurred_at < now() - interval '2 years' returning 1
+)
+select (select count(*) from a) as attempts_deleted,
+       (select count(*) from l) as audit_logs_deleted;
+```
+
+- 확인용 신청을 한 날마다 한 번(신청 뒤 10분 이상 지나서) 실행하면 동의 고지의 "늦어도 72시간 안에 삭제"가 지켜진다.
+- 2월 29일에 실행하면 PostgreSQL의 `now() - interval '2 years'`는 2년 전 2월 28일이 기준이라, 정리 경로(3월 1일 기준)보다 하루치 덜 지운다(기록을 남기는 쪽이라 안전하다). 다른 날에는 기준이 같다.
+- 테이블·열 이름은 정리 구현(`src/lib/scheduled-cleanup.ts`)과 같아야 하며, 저장소 규칙 테스트가 둘을 비교한다.

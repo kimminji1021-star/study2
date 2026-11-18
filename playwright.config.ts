@@ -1,8 +1,17 @@
 // Playwright E2E 설정 — 전용 포트에 개발 서버를 새로 띄워 테스트한다(SPEC-INFRA-001 plan.md M4·M5, R8·R13·R14).
 // 테스트 관리자 계정은 globalSetup이 만들고, globalSetup이 돌려준 정리 함수가 끝난 뒤 지운다.
+import { randomBytes } from 'node:crypto'
+
 import { defineConfig, devices } from '@playwright/test'
 
 import { E2E_BASE_URL, E2E_PORT } from './tests/helpers/e2e-env'
+
+// SPEC-DEPLOY-001 M2: 정리 엔드포인트 E2E용 CRON_SECRET(영문·숫자 32자). 저장소에 고정 값을 두지 않는다.
+// 이 설정 파일은 작업자 프로세스마다 다시 읽히므로, 값이 없을 때만 러너에서 한 번 만들어 process.env에 넣는다 —
+// 작업자는 러너의 환경을 물려받아 서버(webServer env)와 테스트가 같은 값을 읽는다(plan.md §B.11)
+if (process.env.CRON_SECRET === undefined) {
+  process.env.CRON_SECRET = randomBytes(16).toString('hex')
+}
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -39,6 +48,7 @@ export default defineConfig({
     // Payload serverURL을 E2E 서버 주소로 맞춘다(R14). 나머지 변수는 현재 환경과 Next의 .env 로드를 그대로 쓴다
     env: {
       NEXT_PUBLIC_SERVER_URL: E2E_BASE_URL,
+      CRON_SECRET: process.env.CRON_SECRET,
     },
   },
 })

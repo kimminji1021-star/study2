@@ -466,6 +466,8 @@ const CHECK_EXCLUSIONS = [
   'src/app/(payload)/admin/importMap.js',
   'next-env.d.ts',
   'pnpm-lock.yaml',
+  // SPEC-DEPLOY-001 M2: Payload migrate:create가 만드는 마이그레이션(손편집 금지, plan.md §D의 범위 지정 예외)
+  'src/migrations/',
   // 산출물 디렉터리
   '.next/',
   'out/',
@@ -986,5 +988,110 @@ describe('SPEC-DEPLOY-001 M1 저장소 규칙', () => {
 
   it('AC-DEPLOY-003 migrate:check 스크립트가 있다', () => {
     expect(readScripts()['migrate:check']).toBe('node scripts/migrate-check.mjs')
+  })
+})
+
+// SPEC-DEPLOY-001 M2 — 예약 정리·배포 설정·동의 버전·수동 정리 SQL 저장소 규칙(AC-DEPLOY-007·009·010·015).
+const CLEANUP_FILE = 'src/lib/scheduled-cleanup.ts'
+const CRON_PATH = '/api/cron/cleanup'
+
+type VercelJson = {
+  crons?: { path?: string; schedule?: string }[]
+  regions?: string[]
+  buildCommand?: string
+}
+
+function readVercelJson(): VercelJson {
+  return JSON.parse(readRepoFile('vercel.json')) as VercelJson
+}
+
+// `delete from <테이블> where <열> <` 형태에서 `테이블.열`을 뽑는다(대소문자 무시, 이름은 소문자로)
+const DELETE_TARGET = /\bdelete\s+from\s+([a-z_]+)\s+where\s+([a-z_]+)\s*</gi
+
+function deleteTargets(source: string): string[] {
+  return [...source.matchAll(DELETE_TARGET)].map((match) => `${match[1]}.${match[2]}`.toLowerCase()).sort()
+}
+
+/** README의 `## … 배포` 절 본문(다음 `## ` 제목 전까지). */
+function readmeDeploySection(): string {
+  const readme = readReadme()
+  const start = readme.search(/^## .*배포/m)
+  expect(start, '"배포"가 들어간 ## 제목이 있어야 한다').toBeGreaterThanOrEqual(0)
+  const rest = readme.slice(start + 3)
+  const next = rest.search(/^## /m)
+  return next === -1 ? rest : rest.slice(0, next)
+}
+
+/** 배포 절의 수동 정리 SQL(```sql 블록 중 attempts_deleted를 담은 것). */
+function readmeManualCleanupSql(): string {
+  const blocks = [...readmeDeploySection().matchAll(/```sql\r?\n([\s\S]*?)```/g)].map((match) => match[1] ?? '')
+  const cleanup = blocks.filter((block) => block.includes('attempts_deleted'))
+  expect(cleanup, '배포 절에 수동 정리 SQL 블록이 정확히 1개 있어야 한다').toHaveLength(1)
+  return cleanup[0] ?? ''
+}
+
+describe('SPEC-DEPLOY-001 M2 저장소 규칙', () => {
+  it('AC-DEPLOY-007 정리 모듈은 node:crypto의 timingSafeEqual로 비밀값을 비교한다', () => {
+    const source = readRepoFile(CLEANUP_FILE)
+
+    expect(importSpecifiers(source)).toContain('node:crypto')
+    expect(source).toMatch(/\btimingSafeEqual\(/)
+  })
+
+  it('AC-DEPLOY-009 vercel.json: Cron 1개(정리 경로·0 18 * * *), 리전 icn1, 빌드 스크립트, 비밀값 문자열 없음', () => {
+    const raw = readRepoFile('vercel.json')
+    const vercel = readVercelJson()
+
+    expect(vercel.crons).toHaveLength(1)
+    expect(vercel.crons?.[0]?.path).toBe(CRON_PATH)
+    expect(vercel.crons?.[0]?.schedule).toBe('0 18 * * *')
+    expect(vercel.regions).toEqual(['icn1'])
+
+    const buildCommand = vercel.buildCommand ?? ''
+    const script = /^node (scripts\/[\w-]+\.mjs)$/.exec(buildCommand)
+    expect(script, `buildCommand가 빌드 스크립트를 가리켜야 한다: ${buildCommand}`).not.toBeNull()
+    expect(existsSync(path.join(repoRoot, script?.[1] ?? '')), `${script?.[1]}가 있어야 한다`).toBe(true)
+
+    for (const forbidden of ['x-vercel-protection-bypass', 'Bearer', 'CRON_SECRET']) {
+      expect(raw, forbidden).not.toContain(forbidden)
+    }
+  })
+
+  it('AC-DEPLOY-009 Cron 경로를 처리하는 route 파일이 (payload) 라우트 그룹 아래에 있다', () => {
+    const routeFile = `${PAYLOAD_DIR}${CRON_PATH.slice(1)}/route.ts`
+    expect(existsSync(path.join(repoRoot, routeFile)), `${routeFile}가 있어야 한다`).toBe(true)
+    expect(readRepoFile(routeFile)).toMatch(/export (async function|const) GET\b/)
+  })
+
+  it('AC-DEPLOY-010 신청 문서의 privacyPolicyVersion 값을 넣는 곳은 신청 생성 경로 한 곳뿐이다', () => {
+    const files = listFiles('src').filter((file) => /\.(ts|tsx)$/.test(file) && file !== 'src/payload-types.ts')
+    const mentions = files.filter((file) => readRepoFile(file).includes('privacyPolicyVersion'))
+    expect(mentions.length, 'privacyPolicyVersion을 담은 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+
+    // 객체 속성 대입(`privacyPolicyVersion:`)이나 할당(`privacyPolicyVersion =`)이 있는 파일
+    const writers = files.filter((file) => /\bprivacyPolicyVersion\s*(:|=(?!=))/.test(readRepoFile(file)))
+    expect(writers).toEqual(['src/lib/submit-application.ts'])
+  })
+
+  it('AC-DEPLOY-015 README 배포 절의 수동 정리 SQL은 두 삭제를 묶어 두 행 수를 돌려주는 한 문장이다', () => {
+    const sql = readmeManualCleanupSql()
+
+    expect(sql).toMatch(/^\s*with\b/i)
+    expect(sql.match(/\bdelete\s+from\b/gi)).toHaveLength(2)
+    expect(sql).toContain('attempts_deleted')
+    expect(sql).toContain('audit_logs_deleted')
+    // 문장 끝의 세미콜론 하나뿐(여러 문장이면 편집기가 마지막 결과만 보여 줄 수 있다)
+    expect(sql.match(/;/g)).toHaveLength(1)
+    expect(sql.trimEnd().endsWith(';')).toBe(true)
+  })
+
+  it('AC-DEPLOY-015 수동 정리 SQL의 테이블·열 이름은 정리 구현의 DELETE 질의와 같다', () => {
+    const fromReadme = deleteTargets(readmeManualCleanupSql())
+    const fromImplementation = deleteTargets(readRepoFile(CLEANUP_FILE))
+
+    expect(fromReadme.length, 'README SQL에서 이름을 2개 이상 뽑아야 한다').toBeGreaterThanOrEqual(2)
+    expect(fromImplementation.length, '정리 구현에서 이름을 2개 이상 뽑아야 한다').toBeGreaterThanOrEqual(2)
+    expect(fromReadme).toEqual(fromImplementation)
+    expect(fromImplementation).toEqual(['admin_audit_logs.occurred_at', 'application_attempts.attempted_at'])
   })
 })

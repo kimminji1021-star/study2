@@ -136,7 +136,93 @@ AssertionError: expected '\n[preflight] Database connection fai…' to contain '
 
 **audit O1 반영**: `git status --short src/migrations`는 실행 전후 출력 비교로 판정 — 전 `?? src/migrations/`, `pnpm migrate:check`(종료 0) 뒤 같은 출력(`SAME`). 커밋 뒤에는 빈 출력이 기준.
 
-**열린 항목(M1)**: 생성된 마이그레이션 파일의 `pnpm lint` 경고 4건(`'payload'`·`'req' is defined but never used`, up·down 각 2) — §D가 `eslint.config.mjs` 검사 제외 목록 변경과 생성 파일 손편집을 막아 그대로 둠. M6 품질 게이트("새 경고 0건") 전에 처리 방식 결정 필요(오케스트레이터 차단자 보고).
+**열린 항목(M1)**: 생성된 마이그레이션 파일의 `pnpm lint` 경고 4건(`'payload'`·`'req' is defined but never used`, up·down 각 2) — §D가 `eslint.config.mjs` 검사 제외 목록 변경과 생성 파일 손편집을 막아 그대로 둠. M6 품질 게이트("새 경고 0건") 전에 처리 방식 결정 필요(오케스트레이터 차단자 보고). → **M2에서 해결**(아래 "plan §D 범위 지정 예외").
+
+### M2 — 예약 정리와 동의 문구 (2026-11-18, 기준 HEAD `1dfe7dd`, 작업 트리 `.claude/worktrees/agent-a4ecc1b02ba0fd104`)
+
+**기준선**: `pnpm test` 종료 0, `Test Files 47 passed (47)`, `Tests 725 passed (725)` (`.moai/state/verify/deploy-m2/baseline-test.log`). `pnpm lint` 종료 0, `✖ 4 problems (0 errors, 4 warnings)` — 모두 `src/migrations/20261117_083422_initial.ts`(M1 열린 항목). E2E 기준선 94(오케스트레이터 제공, M1 기록과 같음).
+
+**RED (구현 전, 원문 발췌 — 전체 로그 `.moai/state/verify/deploy-m2/red-*.log`)**:
+
+```
+$ pnpm exec vitest run --project unit tests/unit/scheduled-cleanup.spec.ts tests/unit/consent.spec.ts tests/unit/repo-rules.spec.ts --coverage.enabled=false
+ FAIL  |unit| tests/unit/scheduled-cleanup.spec.ts [ tests/unit/scheduled-cleanup.spec.ts ]
+Error: Cannot find module '../../src/lib/scheduled-cleanup' imported from …/tests/unit/scheduled-cleanup.spec.ts
+AssertionError: 비밀키로 변환한: expected '개인정보 수집·이용 동의(필수)\n수집 항목: 이름, 이메일, 연락…' to contain '비밀키로 변환한'
+AssertionError: expected '개인정보 수집·이용 동의(필수)\n수집 항목: 이름, 이메일, 연락…' not to contain '다음 신청 처리 때'
+AssertionError: expected false to be true // Object.is equality        (버전 날짜 2026-11-17)
+AssertionError: expected [ '*.md', '.claude/', …(17) ] to deeply equal [ '*.md', '.claude/', …(18) ]   (.prettierignore·ESLint 제외 목록 — src/migrations/)
+Error: ENOENT: no such file or directory, open '…\src\lib\scheduled-cleanup.ts'
+Error: ENOENT: no such file or directory, open '…\vercel.json'
+AssertionError: src/app/(payload)/api/cron/cleanup/route.ts가 있어야 한다: expected false to be true
+AssertionError: "배포"가 들어간 ## 제목이 있어야 한다: expected -1 to be greater than or equal to 0   (×2)
+ Test Files  3 failed (3)
+      Tests  10 failed | 84 passed (94)
+
+$ pnpm exec vitest run --project integration tests/integration/scheduled-cleanup.spec.ts --coverage.enabled=false
+Error: Cannot find module '../../src/lib/scheduled-cleanup' imported from …/tests/integration/scheduled-cleanup.spec.ts
+ Test Files  1 failed (1)
+
+$ pnpm exec playwright test tests/e2e/deploy.spec.ts
+    Error: CRON_SECRET 시험용 값이 있어야 한다   Expected: >= 16   Received: 0   (×3)
+    Expected substring: "늦어도 72시간 안에 삭제"
+    Received string:    "이름, 이메일, 연락처, 신청 인원, 선택한 회차. 부정 신청 방지를 위해 접속 IP를 변환한 값(10분간 신청 횟수를 세는 데만 쓰고 그 뒤 다음 신청 처리 때 삭제)"
+  4 failed
+
+# 경로 우선순위 RED(Playwright 시험용 CRON_SECRET만 넣고 route 파일 만들기 전)
+$ pnpm exec playwright test tests/e2e/deploy.spec.ts -g "401"
+    Error: expect(received).toBe(expected) // Object.is equality
+    Expected: 401
+    Received: 404          ← (payload)/api/[...slug](Payload REST)가 응답
+  1 failed
+```
+
+`AC-DEPLOY-010` 저장소 규칙(`privacyPolicyVersion` 쓰는 곳 = `submit-application.ts` 하나)은 RED 실행에서 이미 통과 — 지금 상태를 지키는 회귀 방지 시험이다.
+
+**GREEN**: 단위·통합 5개 파일 `Test Files 5 passed (5)`, `Tests 105 passed (105)` (`green-1.log`, 기존 `rate-limit.spec.ts` 포함). E2E `tests/e2e/deploy.spec.ts` `4 passed (14.0s)` (`green-e2e-1.log`).
+
+**기록 항목 (plan.md §F M2)**
+
+| 항목 | 값 |
+|---|---|
+| 정리 대상 실제 테이블·열 | `application_attempts.attempted_at`, `admin_audit_logs.occurred_at` (M1 확인 이름과 같음 — plan.md §I.4·§I.5 SQL 수정 불필요) |
+| 정리 구현 | `src/lib/scheduled-cleanup.ts` — `cleanupCutoffs(now)`, `isAuthorizedCronRequest(header, secret)`(두 값의 SHA-256을 `timingSafeEqual`로 비교, 비밀값 없음·16자 미만 → 거짓), `runScheduledCleanup(payload, now)`(삭제마다 `with d as (delete … returning 1) select count(*)::int` 한 문장, 트랜잭션 밖 풀, 질의 2회 고정) |
+| 정리 경로 위치 | `src/app/(payload)/api/cron/cleanup/route.ts` — plan §B.5의 후보(라우트 그룹 밖 `src/app/api/…`)는 기존 저장소 규칙 AC-INFRA-004("`src/app` 바로 아래는 두 라우트 그룹뿐")와 충돌해 `(payload)/api` 아래로 둠. 정적 경로가 같은 그룹의 `[...slug]`보다 먼저 골라짐을 E2E로 확인(위 RED 404 → GREEN 401). `next build` 경로 목록에 `ƒ /api/cron/cleanup` |
+| 응답 문구 | 401 `Unauthorized`(text/plain), 405 `Method Not Allowed` + `Allow: GET`(POST·PUT·PATCH·DELETE), 500 `Internal Server Error`(원인 없음, 오류는 `payload.logger.error({ err })`로만), 200 `{"attemptsDeleted":n,"auditLogsDeleted":m}` — 모든 응답 `Cache-Control: no-store` |
+| `vercel.json` | `buildCommand: node scripts/vercel-build.mjs`, `regions: ["icn1"]`, `crons: [{ path: /api/cron/cleanup, schedule: 0 18 * * * }]`. `git.deploymentEnabled`(Preview 끄기)는 공식 문법을 이 작업 환경에서 확인하지 못해 넣지 않음 → M5로 이월 |
+| 새 동의 문구 버전 | `PRIVACY_POLICY_VERSION = '2026-11-17.da8271e6'` (날짜 = 사용자 결정 D7 확정일, 해시 = 새 `consentDocument()` SHA-256 앞 8자리, `tests/unit/consent.spec.ts` 일치 확인) |
+| 새 "수집 항목" 문구 | `이름, 이메일, 연락처, 신청 인원, 선택한 회차. 부정 신청 방지를 위해 접속 IP를 비밀키로 변환한 값(원래 IP 주소는 저장하지 않음. 10분 동안 신청 횟수를 세는 데만 쓰고, 매일 한 번 자동으로 지워 만든 때부터 늦어도 72시간 안에 삭제)` (plan §B.5 초안 그대로) |
+| E2E 시험용 `CRON_SECRET` | `playwright.config.ts`가 `process.env.CRON_SECRET`이 없을 때만 `randomBytes(16).toString('hex')`(32자)를 러너에서 한 번 만들고 `webServer.env`로 넘김 |
+| README | `## 10. 배포` 절 신설 — 예약 정리 설명 + plan §I.5와 같은 한 문장 수동 정리 SQL. 변수 이름 목록·사용자 안내는 M5 |
+| `rate-limit.ts` | `@MX:DEBT` 설명을 "예약 정리 구현됨(scheduled-cleanup.ts)"으로, `@MX:UPGRADE`를 "남용이 관측되면 원자적 카운터"로 갱신(동작 불변) |
+
+**plan §D 범위 지정 예외(오케스트레이터 결정, M2)**: §D는 `.prettierignore`·`eslint.config.mjs` 검사 제외 목록을 바꾸지 않는다고 했으나, M1이 만든 생성 파일 `src/migrations/**`(Payload `migrate:create` 출력 — 손편집 금지)가 `no-unused-vars` 경고 4건과 Prettier 형식 차이를 내므로, 생성 파일로서 두 목록에 `src/migrations/`(ESLint `src/migrations/**`)를 더했다. 저장소 규칙 시험의 단일 목록 `CHECK_EXCLUSIONS`(AC-INFRA-010)에도 같은 항목을 더해 두 파일과 계속 대조한다. 결과 `pnpm lint` 경고 4 → 0. 다른 제외 항목은 그대로다.
+
+**품질 게이트 (2026-11-18, M2 변경 적용 작업 트리, HEAD `1dfe7dd` + 미커밋 변경 — 로그 `.moai/state/verify/deploy-m2/gate-*.log`)**
+
+| 명령 | 결과 |
+|---|---|
+| `pnpm typecheck` | 종료 0 |
+| `pnpm build` | 종료 0, 경로 목록에 `ƒ /api/cron/cleanup` |
+| `pnpm migrate:check` | 종료 0, `[migrate:check] OK: no new migration for no-s3 and fake-s3.` 이어서 `git status --short src/migrations` 출력 없음 |
+| `pnpm test` | 종료 0, `Test Files 49 passed (49)`, `Tests 742 passed (742)` (기준선 725 + 17), `Lines : 99.41% ( 674/678 )`, `scheduled-cleanup.ts` 라인 100% |
+| `pnpm e2e` | 종료 0, `98 passed (1.9m)` (기준선 94 + 4) |
+| `pnpm lint` | 종료 0, 경고 0 |
+| `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| 표식 잔여(컨테이너 안 psql) | `application_attempts key_hash LIKE 'test-%'` 0 · `tours slug LIKE 'test-%'` 0 · `users email LIKE '%@example.test'` 0 · `applications email LIKE 'test-%'` 0 · `sumbi_migration_check%` DB 0 · 개발 신청 ID 2033 존재 1 |
+| 보존 목록 diff(`plan.md` §E-2 마지막 명령) | `.prettierignore`·`eslint.config.mjs` 각 +2줄(위 범위 지정 예외)만, 잠금 구간·점유·정렬·접수·상태 변경·요청 사항 삭제·미디어 읽기 규칙 파일 변경 없음 |
+
+**AC 상태(M2 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-DEPLOY-007 | PASS | 단위 `scheduled-cleanup.spec.ts`(같음 참 / 한 글자·길이·빈 값·Bearer 없음·null 거짓 / 비밀값 없음·빈 값·15자 거짓, 16자 허용), 저장소 규칙 `timingSafeEqual`, E2E 401(머리글 없음 — 본문 `Unauthorized`, JSON 아님)·401(틀림)·405(`Allow: GET`)·200(두 키·0 이상 정수·`no-store`), 401 전후 10분 지난 표식 시도 1건 유지 |
+| AC-DEPLOY-008 | PASS | 단위 기준 시각(`2026-11-17T09:00Z` → `08:50Z`·`2024-11-17T09:00Z`, `2028-02-29` → `2026-03-01`, ±1ms), 통합 a1·l1 삭제·a2·l2 보존·다른 컬렉션 수 불변, 같은 now 재실행 `{0, 0}`, 질의 수 2행·20행 모두 `query 2 = connect 2`, 기존 `rate-limit.spec.ts` 통과 |
+| AC-DEPLOY-009 | PASS | 저장소 규칙: crons 1개·경로·일정, `regions ["icn1"]`, `buildCommand` 스크립트 존재, `x-vercel-protection-bypass`·`Bearer`·`CRON_SECRET` 문자열 없음, route 파일 존재. E2E 200 |
+| AC-DEPLOY-010 | PASS | 단위 문구 포함 4개·`다음 신청 처리 때` 없음, 버전 변경·해시 일치·날짜 형식, 저장소 규칙 `privacyPolicyVersion` 쓰는 곳 1곳, E2E 신청 화면 문구 표시·저장된 신청 버전 = 새 버전 |
+| AC-DEPLOY-015 (수동 정리 SQL 부분) | PASS | 저장소 규칙: README 배포 절 SQL 한 문장(`with`, `delete` 2개, `;` 1개, 두 열 이름), README와 구현의 `테이블.열` 목록이 같음(`admin_audit_logs.occurred_at`, `application_attempts.attempted_at`). `.env.example`·README 변수 목록·`git grep` 비밀값 검사는 M5 |
+
+**Gaps(M2)**: Vercel에서의 실제 Cron 호출·보호 통과(R1)는 M5 수동 확인. `git.deploymentEnabled` 문법 미확인(M5). 커밋은 이 작업 트리에서 하지 않음(Windows Smart App Control이 `moai` pre-commit 훅을 막음) — 사용자가 커밋.
 
 ## §E.3 Run-phase Audit-Ready Signal
 

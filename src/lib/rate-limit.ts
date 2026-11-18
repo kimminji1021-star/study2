@@ -38,9 +38,10 @@ export function rateLimitKey(ip: string, secret: string | undefined = process.en
 }
 
 // @MX:DEBT: [AUTO] 기록·세기를 원자적으로 묶지 않은 단순 횟수 제한 — 같은 키의 동시 요청 몇 건이 세기와 기록 사이에 끼어
-//   한도를 조금 넘을 수 있고, 트래픽이 없으면 오래된 행이 다음 시도까지 남는다(plan.md §B.5 한계, R17)
+//   한도를 조금 넘을 수 있다(plan.md §B.5 한계, R17). 트래픽이 없을 때 남는 오래된 행은 예약 정리가 매일 지운다
+//   (SPEC-DEPLOY-001 scheduled-cleanup.ts 구현됨). 신청마다 지우는 아래 동작은 그대로 둔다
 // @MX:CEILING: 트래픽이 적은 단일 리전 배포의 기본 스팸 방지
-// @MX:UPGRADE: 배포 SPEC에서 오래된 시도 기록 예약 정리(Vercel Cron 등)를 붙이고, 남용이 관측되면 원자적 카운터로 바꾼다
+// @MX:UPGRADE: 남용이 관측되면 원자적 카운터로 바꾼다
 /**
  * 이번 시도를 기록하고 처리해도 되는지 돌려준다(true = 처리, false = RATE_LIMITED).
  * 순서(plan.md §B.5): 오래된 행 정리 → 이번 시도 기록 → 최근 10분 안 같은 키의 행 수가 10을 넘는지.

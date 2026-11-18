@@ -12,7 +12,8 @@ export const REQUIRED_CONSENT: ConsentNotice = {
   items: [
     {
       label: '수집 항목',
-      text: '이름, 이메일, 연락처, 신청 인원, 선택한 회차. 부정 신청 방지를 위해 접속 IP를 변환한 값(10분간 신청 횟수를 세는 데만 쓰고 그 뒤 다음 신청 처리 때 삭제)',
+      // SPEC-DEPLOY-001 REQ-DEPLOY-010(사용자 결정 D7): 실제 동작(rate-limit.ts의 HMAC 키, scheduled-cleanup.ts의 매일 정리)과 같은 설명
+      text: '이름, 이메일, 연락처, 신청 인원, 선택한 회차. 부정 신청 방지를 위해 접속 IP를 비밀키로 변환한 값(원래 IP 주소는 저장하지 않음. 10분 동안 신청 횟수를 세는 데만 쓰고, 매일 한 번 자동으로 지워 만든 때부터 늦어도 72시간 안에 삭제)',
     },
     { label: '이용 목적', text: '투어 신청 접수와 확인, 신청 관련 연락, 현장 참가자 확인' },
     // 투어는 유료(현장 결제)라 신청이 거래 기록이 된다 — 전자상거래법 시행령 제6조(계약·청약철회·대금결제 기록 5년)
@@ -45,7 +46,8 @@ export const SENSITIVE_INFO_NOTICE =
 export const AGE_NOTICE = '만 14세 이상만 직접 신청할 수 있습니다. 만 14세 미만은 보호자가 신청해 주세요.'
 
 // <문구 확정일>.<consentDocument()의 SHA-256 앞 8자리>. 실행 중에 계산하지 않는다(문구 변경 ⇒ 버전 변경을 테스트로 강제)
-export const PRIVACY_POLICY_VERSION = '2026-11-12.99052510'
+// 2026-11-17: SPEC-DEPLOY-001 IP 변환값 보관 문구(이미 접수된 신청의 버전 값은 바꾸지 않는다)
+export const PRIVACY_POLICY_VERSION = '2026-11-17.da8271e6'
 
 /** 고지 하나를 한 덩어리 글로 펼친다(제목 다음 줄마다 `항목: 내용`). */
 export function noticeText(notice: ConsentNotice): string {

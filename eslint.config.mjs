@@ -28,6 +28,8 @@ export default defineConfig([
       'src/app/(payload)/admin/importMap.js',
       'next-env.d.ts',
       'pnpm-lock.yaml',
+      // Payload migrate:create가 만드는 마이그레이션(SPEC-DEPLOY-001)
+      'src/migrations/**',
       // 산출물 디렉터리
       '.next/**',
       'out/**',
