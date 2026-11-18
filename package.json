@@ -19,12 +19,14 @@
     "typecheck": "tsc --noEmit",
     "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
     "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
+    "migrate:check": "node scripts/migrate-check.mjs",
     "seed": "cross-env NODE_OPTIONS=--no-deprecation payload run scripts/seed.ts"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.93.0",
     "@payloadcms/next": "3.93.0",
     "@payloadcms/richtext-lexical": "3.93.0",
+    "@payloadcms/storage-s3": "3.93.0",
     "@payloadcms/ui": "3.93.0",
     "@tailwindcss/postcss": "4.3.5",
     "cross-env": "10.1.0",

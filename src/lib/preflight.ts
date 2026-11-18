@@ -62,6 +62,40 @@ export function parseDatabaseTarget(value: string): DatabaseTarget | null {
   }
 }
 
+// 같은 PC 안의 DB로만 보는 호스트(SPEC-DEPLOY-001 REQ-DEPLOY-002). 시드 거부 판정(src/lib/seed.ts)과 같은 목록이다
+const LOOPBACK_DATABASE_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1'])
+
+// @MX:ANCHOR: [AUTO] 루프백 DB 판정의 단일 지점 — runPreflight(dev·test·e2e), assertLoopbackDatabase(시험 환경 파일), db-connection(push·SSL 분기)이 부른다
+// @MX:REASON: 목록이 넓어지면 원격 DB에 push·정리 시험이 닿고, 좁아지면 로컬 개발이 인증서를 요구받는다(REQ-DEPLOY-002·004)
+/** 호스트 이름이 루프백(localhost·127.0.0.1·::1, 대괄호 IPv6 포함)인지. 그 밖의 사설 주소도 원격으로 본다. */
+export function isLoopbackHost(host: string): boolean {
+  return LOOPBACK_DATABASE_HOSTS.has(
+    host
+      .trim()
+      .toLowerCase()
+      .replace(/^\[(.*)\]$/, '$1'),
+  )
+}
+
+export function formatLoopbackOnlyMessage(host: string): string {
+  return `${LOG_PREFIX} Only a loopback database is allowed for this command (host: ${host}).`
+}
+
+// @MX:NOTE: [AUTO] 개발·테스트 경로의 원격 DB 차단 — Vitest 통합 준비 파일(setup-env.ts)과 Playwright 공통 환경(e2e-env.ts)이 모듈 최상위에서 부른다.
+//   시작 전 점검을 거치지 않는 직접 실행(pnpm exec vitest·playwright)이 원격 DB에 닿아 정리·삭제를 실행하는 것을 막는다(AC-DEPLOY-002)
+/** DATABASE_URL이 루프백이 아니면 호스트 이름만 담은 영문 오류를 던진다. 값이 없으면 다른 점검에 맡긴다. */
+export function assertLoopbackDatabase(env: EnvSource): void {
+  const raw = (env.DATABASE_URL ?? '').trim()
+  if (raw === '') return
+  const target = parseDatabaseTarget(raw)
+  if (target === null) {
+    throw new Error(`${LOG_PREFIX} DATABASE_URL is not a valid PostgreSQL connection URL (the value is not shown).`)
+  }
+  if (!isLoopbackHost(target.host)) {
+    throw new Error(formatLoopbackOnlyMessage(target.host))
+  }
+}
+
 // @MX:ANCHOR: [AUTO] 시작 전 점검(runPreflight)과 Playwright 설정(tests/helpers/e2e-env.ts)이 같은 E2E 포트를 쓰도록 하는 단일 해석 지점
 // @MX:REASON: 해석 규칙이 갈라지면 점검한 포트와 테스트가 띄우는 포트가 달라져 AC-INFRA-008·015가 엉뚱한 서버를 대상으로 한다
 /** E2E_PORT를 해석한다. 비어 있으면 기본값, 1~65535 정수가 아니면 null. */
@@ -166,6 +200,10 @@ export async function runPreflight(
           'Expected the form postgresql://USER:PASSWORD@HOST:PORT/DATABASE. See .env.example.',
         ].join('\n'),
       }
+    }
+    // 원격 DB면 연결을 시도하기 전에 멈춘다(SPEC-DEPLOY-001 REQ-DEPLOY-002). build·start는 이 점검을 하지 않는다
+    if (!isLoopbackHost(target.host)) {
+      return { ok: false, message: formatLoopbackOnlyMessage(target.host) }
     }
     const probe = await deps.probeTcp(target.host, target.port, DB_PROBE_TIMEOUT_MS)
     if (!probe.ok) {

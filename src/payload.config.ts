@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
+import { s3Storage } from '@payloadcms/storage-s3'
 import { buildConfig } from 'payload'
 
 import { AdminAuditLogs } from './collections/AdminAuditLogs'
@@ -16,7 +17,9 @@ import { Tours } from './collections/Tours'
 import { TourSessions } from './collections/TourSessions'
 import { Users } from './collections/Users'
 import { HomeSettings } from './globals/HomeSettings'
+import { buildPoolConfig, isLoopbackDatabaseUrl } from './lib/db-connection'
 import { assertRequiredEnv } from './lib/preflight'
+import { resolveStorageConfig } from './lib/storage'
 import { MAX_UPLOAD_BYTES } from './lib/validation'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -24,6 +27,10 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 // REQ-INFRA-008 두 번째 확인 지점: 시작 전 점검(scripts/preflight.mjs)을 거치지 않고 설정을 직접 불러오는
 // 경로(payload CLI, 통합 테스트 등)에서도 필수 변수가 비어 있으면 DB에 연결하기 전에 이름만 담은 오류로 멈춘다.
 assertRequiredEnv(process.env)
+
+// 업로드 저장소(SPEC-DEPLOY-001 REQ-DEPLOY-006): S3 변수 다섯 개가 모두 있을 때만 켜지고, 없으면 로컬 media/를 쓴다.
+// 일부만 있으면 여기서 빠진 이름만 담은 오류로 멈춘다.
+const storage = resolveStorageConfig(process.env)
 
 export default buildConfig({
   admin: {
@@ -56,9 +63,21 @@ export default buildConfig({
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
+  // SPEC-DEPLOY-001 REQ-DEPLOY-004: 원격 DB는 인증서 검증 SSL·풀 크기 5(기본), 루프백은 지금 설정 그대로.
+  // push(개발용 스키마 자동 반영)는 루프백 DB에서만 켠다 — 운영 DB 스키마는 마이그레이션으로만 만든다(REQ-DEPLOY-002·003)
   db: postgresAdapter({
-    pool: {
-      connectionString: process.env.DATABASE_URL,
-    },
+    pool: buildPoolConfig(process.env),
+    push: isLoopbackDatabaseUrl(process.env.DATABASE_URL),
   }),
+  // 저장소 플러그인은 꺼진 환경에서도 언제나 등록한다. alwaysInsertFields: true면 꺼져 있어도 media에 같은 필드
+  // (prefix, _objectKey)를 넣어, S3 변수 없이 만든 마이그레이션과 운영(켜짐) 스키마가 같아진다(plan.md §B.4 D1)
+  plugins: [
+    s3Storage({
+      enabled: storage !== null,
+      alwaysInsertFields: true,
+      collections: { media: true },
+      bucket: storage?.bucket ?? '',
+      config: storage?.config ?? {},
+    }),
+  ],
 })

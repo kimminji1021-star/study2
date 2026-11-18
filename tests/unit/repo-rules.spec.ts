@@ -2,7 +2,7 @@
 // 셸 검색 대신 Node에서 직접 파일을 읽어 PowerShell 인용 차이를 피한다.
 // 각 검사는 대상이 1건 이상 있음을 먼저 단언해, 대상이 비어서 통과하는 경우를 막는다.
 import { createHash } from 'node:crypto'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -895,5 +895,96 @@ describe('AC-LANDING-012 Pretendard 직접 호스팅', () => {
     expect(names.length).toBeGreaterThanOrEqual(1)
 
     expect(names.filter((name) => name.toLowerCase().includes('pretendard'))).toEqual([])
+  })
+})
+
+// SPEC-DEPLOY-001 M1 — 마이그레이션·DB 연결·저장소 플러그인·시험 환경 파일의 저장소 규칙
+const MIGRATIONS_DIR = 'src/migrations'
+const PAYLOAD_CONFIG_FILE = 'src/payload.config.ts'
+const TEST_ENV_FILES = ['tests/integration/setup-env.ts', 'tests/helpers/e2e-env.ts']
+
+// 설치본 배포 디렉터리 안의 .js 파일을 모은다(pnpm 실제 경로 기준). 검사 대상 파일이 1개 이상임을 함께 단언한다.
+function listJsFilesUnder(absoluteDir: string): string[] {
+  const files = readdirSync(absoluteDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+    .map((entry) => path.join(entry.parentPath, entry.name))
+  expect(files.length, `${absoluteDir}에 검사할 .js 파일이 있어야 한다`).toBeGreaterThanOrEqual(1)
+  return files
+}
+
+describe('SPEC-DEPLOY-001 M1 저장소 규칙', () => {
+  it('AC-DEPLOY-003 마이그레이션 디렉터리에 마이그레이션 1개 이상(.ts와 .json 짝)과 index.ts가 있다', () => {
+    const files = listFiles(MIGRATIONS_DIR).map((file) => path.posix.basename(file))
+    const migrations = files.filter((name) => name.endsWith('.ts') && name !== 'index.ts')
+
+    expect(files).toContain('index.ts')
+    expect(migrations.length, '마이그레이션 파일이 있어야 한다').toBeGreaterThanOrEqual(1)
+    const index = readRepoFile(`${MIGRATIONS_DIR}/index.ts`)
+    for (const migration of migrations) {
+      expect(files, `${migration}의 스냅숏 JSON`).toContain(migration.replace(/\.ts$/, '.json'))
+      expect(index, `index.ts가 ${migration}을 불러와야 한다`).toContain(`./${migration.replace(/\.ts$/, '')}`)
+    }
+  })
+
+  it('AC-DEPLOY-006 s3Storage는 조건 없이 plugins에 들어 있고 enabled와 alwaysInsertFields: true를 준다', () => {
+    const source = readRepoFile(PAYLOAD_CONFIG_FILE)
+    const pluginsStart = source.indexOf('plugins: [')
+    expect(pluginsStart, 'plugins 배열이 있어야 한다').toBeGreaterThanOrEqual(0)
+    const plugins = source.slice(pluginsStart)
+
+    expect(plugins).toMatch(/^plugins: \[\s*s3Storage\(\{/)
+    const options = plugins.slice(0, plugins.indexOf('})'))
+    expect(options).toMatch(/\benabled:/)
+    expect(options).toContain('alwaysInsertFields: true')
+    // 조건부 등록(삼항·&&·스프레드) 금지
+    expect(source).not.toMatch(/(\?|&&)\s*s3Storage\(|\.\.\.[^\n]*s3Storage\(/)
+  })
+
+  it('AC-DEPLOY-002 어댑터의 push는 루프백 판정에 묶여 있고 풀 설정은 buildPoolConfig를 쓴다', () => {
+    const source = readRepoFile(PAYLOAD_CONFIG_FILE)
+
+    expect(source).toMatch(/push:\s*isLoopbackDatabaseUrl\(process\.env\.DATABASE_URL\)/)
+    expect(source).toMatch(/pool:\s*buildPoolConfig\(process\.env\)/)
+  })
+
+  it.each(TEST_ENV_FILES)(
+    'AC-DEPLOY-002 %s는 node: 모듈과 src/lib/preflight만 불러오고 최상위에서 루프백 판정을 부른다',
+    (file) => {
+      const source = readRepoFile(file)
+      const specifiers = importSpecifiers(source)
+
+      expect(specifiers.length, 'import가 1개 이상 있어야 한다').toBeGreaterThanOrEqual(1)
+      expect(
+        specifiers.filter(
+          (specifier) => !specifier.startsWith('node:') && !/(^|\/)src\/lib\/preflight$/.test(specifier),
+        ),
+      ).toEqual([])
+      expect(source).toMatch(/^assertLoopbackDatabase\(process\.env\)$/m)
+    },
+  )
+
+  it('AC-DEPLOY-004 src와 Payload DB 배포본에 이름 붙은 준비된 문장 호출(.prepare()이 없다', () => {
+    const srcFiles = listFiles('src').filter((file) => /\.(ts|tsx|js|mjs)$/.test(file))
+    expect(srcFiles.length).toBeGreaterThanOrEqual(1)
+    expect(srcFiles.filter((file) => readRepoFile(file).includes('.prepare('))).toEqual([])
+
+    const dbPostgres = realpathSync(path.join(repoRoot, 'node_modules', '@payloadcms', 'db-postgres'))
+    // pnpm 배치에서 @payloadcms/drizzle은 db-postgres와 같은 node_modules/@payloadcms 아래에 있다
+    const drizzle = path.join(path.dirname(dbPostgres), 'drizzle')
+    for (const dist of [path.join(drizzle, 'dist'), path.join(dbPostgres, 'dist')]) {
+      expect(existsSync(dist), `${dist}가 있어야 한다`).toBe(true)
+      expect(listJsFilesUnder(dist).filter((file) => readFileSync(file, 'utf8').includes('.prepare('))).toEqual([])
+    }
+  })
+
+  it('AC-DEPLOY-006 @payloadcms/storage-s3는 범위 기호 없이 payload와 같은 버전이다', () => {
+    const dependencies = directDependencies(readRootPackage())
+
+    expect(dependencies['@payloadcms/storage-s3']).toBe('3.93.0')
+    expect(dependencies['@payloadcms/storage-s3']).toBe(dependencies.payload)
+  })
+
+  it('AC-DEPLOY-003 migrate:check 스크립트가 있다', () => {
+    expect(readScripts()['migrate:check']).toBe('node scripts/migrate-check.mjs')
   })
 })

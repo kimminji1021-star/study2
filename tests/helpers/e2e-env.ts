@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { resolveE2ePort } from '../../src/lib/preflight'
+import { assertLoopbackDatabase, resolveE2ePort } from '../../src/lib/preflight'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const envFile = path.join(repoRoot, '.env')
@@ -14,6 +14,10 @@ const envFile = path.join(repoRoot, '.env')
 if (existsSync(envFile)) {
   process.loadEnvFile(envFile)
 }
+
+// SPEC-DEPLOY-001 REQ-DEPLOY-002: 시작 전 점검을 거치지 않는 `pnpm exec playwright test`도 원격 DB에 닿지 않게,
+// Playwright 설정이 이 파일을 불러올 때(웹 서버·시험보다 먼저) 루프백 판정을 한다.
+assertLoopbackDatabase(process.env)
 
 const port = resolveE2ePort(process.env)
 if (port === null) {

@@ -67,7 +67,76 @@ legal_review_required: true   # 72시간·2년 보관 문구와 바뀐 동의 �
 
 ## §E.2 Run-phase Evidence
 
-_<pending run-phase>_
+### 기준선 (plan.md §C, 2026-11-17, HEAD `5b6c32a`, 작업 트리 `.claude/worktrees/agent-ac4407bc74cb69987`)
+
+| 명령 | 결과 |
+|---|---|
+| `docker compose ps` | `postgres healthy` |
+| `pnpm test` | 종료 0, `Test Files 43 passed (43)`, `Tests 659 passed (659)` |
+| `pnpm e2e` | 종료 0, `94 passed (2.8m)` |
+| `pnpm lint` / `pnpm format:check` / `pnpm typecheck` | 각각 종료 0 |
+| `pnpm audit` | 종료 1, `4 vulnerabilities found — Severity: 2 moderate \| 2 high` (계획 시점과 같음) |
+| `.env`의 DB 호스트(값 미출력, 호스트만) | `127.0.0.1:5432` (루프백) |
+
+로그: `.moai/state/verify/deploy-m1/baseline-*.log`
+
+### M1 — DB 연결과 마이그레이션, 원격 DB 차단
+
+**의존성**: `pnpm add -E @payloadcms/storage-s3@3.93.0` 종료 0. `package.json` 변경은 이 한 줄과 `migrate:check` 스크립트뿐. `pnpm-workspace.yaml`의 `allowBuilds`·`overrides` 변경 불필요(설치가 빌드 스크립트 차단 없이 끝남). 잠금 파일에 `esbuild` 변경 없음 — `pnpm peers check`의 `unmet peer esbuild`(vite@8.3.6)는 이번 추가와 무관한 기존 상태.
+
+**`pnpm audit --json` 재측정(의존성 추가 뒤)**: `{"moderate":2,"high":2}` — 새 권고 없음(`@aws-sdk/*` 경유 0건).
+
+| 권고 | 심각도 | 도달 경로 | 판단 |
+|---|---|---|---|
+| happy-dom GHSA-834v-8h66-3h79 | high | `@payloadcms/richtext-lexical>@lexical/headless>happy-dom`, `vitest>happy-dom`(2) | 실행 경로 미도달 — `richText` 필드 없음, 나머지는 시험 도구 |
+| happy-dom GHSA-c8p4-j97h-3vg8 | high | 위와 같음 | 위와 같음 |
+| esbuild GHSA-67mh-4wv8-2f99 | moderate | `@payloadcms/db-postgres>drizzle-kit>@esbuild-kit/esm-loader>@esbuild-kit/core-utils>esbuild` | 마이그레이션 생성 도구 경유, 개발 서버 취약점 — 실행 경로 미도달 |
+| minimatch GHSA-g3hv-75wg-m249 | moderate | `eslint-config-next>…>minimatch`(11개 경로) | 린트 도구 — 실행 경로 미도달 |
+
+**RED (구현 전, 원문 발췌 — 전체 로그 `.moai/state/verify/deploy-m1/red-unit-1.log`, `red-integration-1.log`)**:
+
+```
+$ pnpm exec vitest run --project unit tests/unit/deploy-config.spec.ts --coverage.enabled=false
+ FAIL  |unit| tests/unit/deploy-config.spec.ts [ tests/unit/deploy-config.spec.ts ]
+Error: Cannot find module '../../scripts/migrate-check.mjs' imported from …/tests/unit/deploy-config.spec.ts
+ Test Files  1 failed (1)
+      Tests  no tests
+
+$ pnpm exec vitest run tests/unit/repo-rules.spec.ts tests/integration/remote-db-guard.spec.ts tests/integration/db-pool-min.spec.ts tests/integration/migrations.spec.ts --coverage.enabled=false
+Error: ENOENT: no such file or directory, scandir '…\src\migrations'
+AssertionError: plugins 배열이 있어야 한다: expected -1 to be greater than or equal to 0
+AssertionError: expected '// Payload 설정 — 공식 with-postgres 템플릿(…' to match /push:\s*isLoopbackDatabaseUrl\(proces…/
+AssertionError: expected '// 통합 테스트 준비: …' to match /^assertLoopbackDatabase\(process\.en…/m
+AssertionError: expected undefined to be 'node scripts/migrate-check.mjs' // Object.is equality
+AssertionError: expected 10 to be 3 // Object.is equality        (db-pool-min: 풀 최대 연결 수)
+AssertionError: expected [] to deeply equal [ '["admin_audit_logs"]', …(14) ]   (빈 DB 마이그레이션 = 개발 스키마)
+AssertionError: expected [] to include '["prefix"]'
+AssertionError: expected '\n[preflight] Database connection fai…' to contain 'Only a loopback database is allowed f…'
+ Test Files  4 failed (4)
+      Tests  16 failed | 76 passed (92)
+```
+
+**GREEN**: 같은 5개 파일 `Test Files 5 passed (5)`, `Tests 137 passed (137)` (`green-1.log`).
+
+**기록 항목 (plan.md §F M1 "기록")**
+
+| 항목 | 값 |
+|---|---|
+| 첫 마이그레이션 | `src/migrations/20261117_083422_initial.ts` + `.json`, `index.ts` (`payload migrate:create initial`, S3 변수 없는 설정, DB 연결 없음) — 생성 뒤 `prettier --write src/migrations`만 적용(형식만, 내용 불변) |
+| 스키마 비교 항목 | 테이블 15개(`CREATE TABLE` 15), 비교 범주 5개(테이블·열[형식·널·기본값·길이·정밀도]·인덱스 정의·제약[p/u/c/f] 정의·열거형 값) 모두 일치 — `tests/integration/migrations.spec.ts` |
+| 저장소 플러그인 열 실제 이름 | `media.prefix`(`varchar DEFAULT ''`), `media._objectkey`(`varchar`, 소문자) |
+| 정리 대상 테이블·열 (M2·§I.5용) | `application_attempts.attempted_at`(`key_hash`), `admin_audit_logs.occurred_at` |
+| `migrate:check` 이름 | `pnpm migrate:check` = `node scripts/migrate-check.mjs` |
+| 원격 DB 거부 문구 | `[preflight] Only a loopback database is allowed for this command (host: <호스트>).` |
+| 인증서 없는 원격 문구 | `[db] DATABASE_CA_CERT must contain the database CA certificate (PEM, -----BEGIN CERTIFICATE-----) to connect to a non-loopback database.` |
+| 풀 크기 오류 문구 | `[db] DATABASE_POOL_MAX must be an integer between 3 and 20.` |
+| S3 일부 설정 문구 | `[storage] Missing S3 storage environment variables: <이름, …>. Set all five S3_* variables, or none to use local storage.` |
+| Vercel 빌드 거부 문구 | `[vercel-build] Refusing to run: VERCEL_ENV is "<값>", expected "production". No migration was run.` |
+| `DATABASE_CA_CERT` 한 줄 값 | 실제 줄바꿈이 없고 `\n` 글자가 있으면 줄바꿈으로 바꿈(단위 시험 고정) — 실제 Vercel 값 형태는 M5에서 확인 |
+
+**audit O1 반영**: `git status --short src/migrations`는 실행 전후 출력 비교로 판정 — 전 `?? src/migrations/`, `pnpm migrate:check`(종료 0) 뒤 같은 출력(`SAME`). 커밋 뒤에는 빈 출력이 기준.
+
+**열린 항목(M1)**: 생성된 마이그레이션 파일의 `pnpm lint` 경고 4건(`'payload'`·`'req' is defined but never used`, up·down 각 2) — §D가 `eslint.config.mjs` 검사 제외 목록 변경과 생성 파일 손편집을 막아 그대로 둠. M6 품질 게이트("새 경고 0건") 전에 처리 방식 결정 필요(오케스트레이터 차단자 보고).
 
 ## §E.3 Run-phase Audit-Ready Signal
 
