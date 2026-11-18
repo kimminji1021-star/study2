@@ -23,6 +23,11 @@ const nextConfig: NextConfig = {
 
     return webpackConfig
   },
+  // 검색 제외 머리글(SPEC-DEPLOY-001 REQ-DEPLOY-012): 공개 화면·관리자·API·이미지·정적 파일·404를 포함한 모든 응답.
+  // 2단계 공개 출시 SPEC이 robots.ts·로봇 메타 태그와 함께 걷어 낸다
+  async headers() {
+    return [{ source: '/:path*', headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] }]
+  },
   // 저장소 루트를 명시한다. 상위 디렉터리의 다른 잠금 파일을 작업 공간 루트로 오인하지 않게 한다
   turbopack: {
     root: path.resolve(dirname),

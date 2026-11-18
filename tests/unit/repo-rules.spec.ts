@@ -1095,3 +1095,73 @@ describe('SPEC-DEPLOY-001 M2 저장소 규칙', () => {
     expect(fromImplementation).toEqual(['admin_audit_logs.occurred_at', 'application_attempts.attempted_at'])
   })
 })
+
+// SPEC-DEPLOY-001 M3·M4 — 저장소 플러그인 옵션, 업로드 안내 문구, 로그 가림 설정, 접속 IP 근거 주석, 검색 제외 파일
+// (AC-DEPLOY-005·006·011·012)
+const MEDIA_COLLECTION_FILE = 'src/collections/Media.ts'
+const RATE_LIMIT_FILE = 'src/lib/rate-limit.ts'
+
+/** payload.config.ts의 s3Storage({ … }) 옵션 본문(첫 `})` 전까지). */
+function s3StorageOptionsSource(): string {
+  const source = readRepoFile(PAYLOAD_CONFIG_FILE)
+  const start = source.indexOf('s3Storage({')
+  expect(start, 's3Storage({ 호출이 있어야 한다').toBeGreaterThanOrEqual(0)
+  const rest = source.slice(start)
+  return rest.slice(0, rest.indexOf('})'))
+}
+
+describe('SPEC-DEPLOY-001 M3·M4 저장소 규칙', () => {
+  it('AC-DEPLOY-006 s3Storage 옵션은 접근 규칙 해제·서명 주소·브라우저 직접 업로드를 켜지 않는다', () => {
+    const options = s3StorageOptionsSource()
+    expect(options).toContain('collections: { media: true }')
+    for (const forbidden of ['disablePayloadAccessControl', 'signedDownloads', 'clientUploads']) {
+      expect(options, forbidden).not.toContain(forbidden)
+    }
+  })
+
+  it('AC-DEPLOY-006 media 관리자 안내 문구에 4MB 이하가 있고 5MB 판정·오류 문구는 그대로다', async () => {
+    const { Media } = await import('../../src/collections/Media')
+    const { MAX_UPLOAD_BYTES, exceedsUploadLimit } = await import('../../src/lib/validation')
+    const description = Media.admin?.description
+
+    expect(typeof description).toBe('string')
+    expect(description as string).toContain('4MB 이하')
+    expect(description as string).toContain('5MB')
+    expect(MAX_UPLOAD_BYTES).toBe(5 * 1024 * 1024)
+    expect(exceedsUploadLimit({ size: MAX_UPLOAD_BYTES })).toBe(false)
+    expect(exceedsUploadLimit({ size: MAX_UPLOAD_BYTES + 1 })).toBe(true)
+    expect(readRepoFile(MEDIA_COLLECTION_FILE)).toContain("'File size exceeds the 5 MB limit.'")
+  })
+
+  it('AC-DEPLOY-011 payload.config.ts는 가림 옵션을 로거 설정에 넣는다', () => {
+    const source = readRepoFile(PAYLOAD_CONFIG_FILE)
+
+    expect(importSpecifiers(source)).toContain('./lib/log-redaction')
+    expect(source).toMatch(/logger:\s*\{\s*options:\s*redactingLoggerOptions\(\),/)
+  })
+
+  it('AC-DEPLOY-005 rate-limit.ts에 Vercel이 x-forwarded-for를 덮어쓴다는 근거 주석과 문서 주소가 있다', () => {
+    const source = readRepoFile(RATE_LIMIT_FILE)
+
+    expect(source).toContain('https://vercel.com/docs/headers/request-headers')
+    expect(source).toMatch(/@MX:NOTE:[^\n]*x-forwarded-for[^\n]*덮어/)
+  })
+
+  // plan.md §B.1·§B.9: Preview 배포를 쓰지 않는다. Vercel 문서(project-configuration/git-configuration, 2026-11-18 확인):
+  // git.deploymentEnabled는 가지 이름(minimatch) → 불리언이고, 여러 규칙에 맞으면 하나라도 true일 때 배포한다
+  it('AC-DEPLOY-009 vercel.json은 main 가지만 자동 배포하고 나머지 가지(**)는 끈다', () => {
+    const vercel = JSON.parse(readRepoFile('vercel.json')) as { git?: { deploymentEnabled?: unknown } }
+
+    expect(vercel.git?.deploymentEnabled).toEqual({ '**': false, main: true })
+  })
+
+  it('AC-DEPLOY-012 robots 설정 파일이 src/app 바로 아래에 있고 사이트맵을 내지 않는다', () => {
+    const robotsFile = `${APP_DIR}/robots.ts`
+    expect(existsSync(path.join(repoRoot, robotsFile)), `${robotsFile}가 있어야 한다`).toBe(true)
+    const robots = readRepoFile(robotsFile)
+
+    expect(robots).toMatch(/disallow:\s*'\/'/)
+    expect(robots).not.toMatch(/sitemap/i)
+    expect(listFiles(APP_DIR).filter((file) => /\/sitemap\.(ts|tsx|js|xml)$/.test(file))).toEqual([])
+  })
+})

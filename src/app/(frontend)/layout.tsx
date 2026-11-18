@@ -26,6 +26,8 @@ const pretendard = localFont({
 export const metadata: Metadata = {
   title: '숨비투어',
   description: '제주의 소규모 투어와 다가오는 회차를 한눈에 확인하세요.',
+  // 비공개 미리보기 동안 검색 제외(SPEC-DEPLOY-001 REQ-DEPLOY-012). 2단계 공개 출시 때 걷어 낸다
+  robots: { index: false, follow: false },
 }
 
 export default function FrontendLayout({ children }: { children: ReactNode }) {

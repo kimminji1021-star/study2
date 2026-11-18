@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { s3Storage } from '@payloadcms/storage-s3'
-import { buildConfig } from 'payload'
+import { buildConfig, defaultLoggerOptions } from 'payload'
 
 import { AdminAuditLogs } from './collections/AdminAuditLogs'
 import { ApplicationAttempts } from './collections/ApplicationAttempts'
@@ -18,6 +18,7 @@ import { TourSessions } from './collections/TourSessions'
 import { Users } from './collections/Users'
 import { HomeSettings } from './globals/HomeSettings'
 import { buildPoolConfig, isLoopbackDatabaseUrl } from './lib/db-connection'
+import { redactingLoggerOptions } from './lib/log-redaction'
 import { assertRequiredEnv } from './lib/preflight'
 import { resolveStorageConfig } from './lib/storage'
 import { MAX_UPLOAD_BYTES } from './lib/validation'
@@ -55,6 +56,9 @@ export default buildConfig({
       fileSize: MAX_UPLOAD_BYTES,
     },
   },
+  // SPEC-DEPLOY-001 REQ-DEPLOY-011: DB 오류 로그의 질의 바인딩 값(신청자 정보)을 가린다. 출력은 Payload 기본값과 같은
+  // pino-pretty 스트림(defaultLoggerOptions)이다. 모든 환경(개발·테스트·운영)에 적용된다
+  logger: { options: redactingLoggerOptions(), destination: defaultLoggerOptions },
   secret: process.env.PAYLOAD_SECRET ?? '',
   // 사이트 주소. Payload는 빈 문자열이 아닌 serverURL을 CSRF 허용 목록에 자동으로 넣는다
   // (E2E 서버가 다른 포트를 쓸 때 이 값을 덮어쓴다 — plan.md R14, M5에서 확인).

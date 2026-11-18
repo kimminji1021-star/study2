@@ -158,6 +158,8 @@ export interface User {
   collection: 'users';
 }
 /**
+ * 사진은 5MB까지 올릴 수 있지만, 실제 사이트에서는 4MB 이하 파일을 올려 주세요.
+ *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */

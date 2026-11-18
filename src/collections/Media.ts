@@ -16,6 +16,9 @@ export const Media: CollectionConfig = {
   slug: 'media',
   admin: {
     useAsTitle: 'alt',
+    // 목록·편집(업로드) 화면 머리에 보이는 안내(SPEC-DEPLOY-001 REQ-DEPLOY-006, 사용자 결정 D7).
+    // 운영(Vercel)은 함수 요청 본문 한도 4.5MB에 먼저 걸리므로 코드 한도(5MB)는 두고 안내만 한다
+    description: '사진은 5MB까지 올릴 수 있지만, 실제 사이트에서는 4MB 이하 파일을 올려 주세요.',
   },
   access: {
     read: mediaReadAccess,

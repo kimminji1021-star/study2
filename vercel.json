@@ -1,5 +1,6 @@
 {
   "buildCommand": "node scripts/vercel-build.mjs",
   "regions": ["icn1"],
-  "crons": [{ "path": "/api/cron/cleanup", "schedule": "0 18 * * *" }]
+  "crons": [{ "path": "/api/cron/cleanup", "schedule": "0 18 * * *" }],
+  "git": { "deploymentEnabled": { "**": false, "main": true } }
 }

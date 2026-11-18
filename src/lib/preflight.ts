@@ -41,6 +41,67 @@ export function assertRequiredEnv(env: EnvSource): void {
   }
 }
 
+// 운영 빌드(VERCEL_ENV=production)에서만 추가로 요구하는 변수(SPEC-DEPLOY-001 REQ-DEPLOY-001). 로컬 build·dev·test·e2e 규칙은 그대로다
+export const PRODUCTION_ENV_NAMES = [
+  'NEXT_PUBLIC_SERVER_URL',
+  'CRON_SECRET',
+  'DATABASE_CA_CERT',
+  'S3_BUCKET',
+  'S3_ENDPOINT',
+  'S3_REGION',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+] as const
+
+// Vercel 문서: Cron 호출 머리글에 그대로 실리므로 영문·숫자만, 16자 이상
+const CRON_SECRET_PATTERN = /^[A-Za-z0-9]{16,}$/
+const CERTIFICATE_MARKER = '-----BEGIN CERTIFICATE-----'
+// 연결 문자열에 SSL 인자가 있으면 pg가 그 값으로 코드의 인증서 설정(ssl.ca)을 덮어쓴다(plan.md §A.2)
+const SSL_URL_PARAMS: ReadonlySet<string> = new Set(['ssl', 'sslmode', 'sslrootcert', 'sslcert', 'sslkey'])
+
+/** 운영 빌드인지. Vercel이 운영 배포를 만들 때만 production이다(로컬 pnpm build는 아님). */
+export function isProductionBuild(env: EnvSource): boolean {
+  return env.VERCEL_ENV === 'production'
+}
+
+// 사이트 주소는 https 출처 그대로(경로·끝 빗금·질의·조각·사용자 정보 없음)여야 CSRF 허용 목록과 정확히 맞는다
+function isSiteOrigin(raw: string): boolean {
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'https:' && url.origin === raw
+  } catch {
+    return false
+  }
+}
+
+function hasSslUrlParam(raw: string): boolean {
+  const query = raw.indexOf('?')
+  if (query === -1) return false
+  return [...new URLSearchParams(raw.slice(query + 1)).keys()].some((key) => SSL_URL_PARAMS.has(key.toLowerCase()))
+}
+
+/** 운영 빌드에서 빠졌거나 형식이 틀린 변수 이름을 선언 순서대로 돌려준다(값은 담지 않는다). DATABASE_URL은 SSL 인자가 있을 때 마지막에 붙는다. */
+export function findInvalidProductionEnv(env: EnvSource): string[] {
+  const invalid: string[] = findMissingEnv(env, PRODUCTION_ENV_NAMES)
+  const check = (name: string, valid: (value: string) => boolean) => {
+    const value = env[name] ?? ''
+    if (!invalid.includes(name) && !valid(value)) invalid.push(name)
+  }
+  check('NEXT_PUBLIC_SERVER_URL', isSiteOrigin)
+  check('CRON_SECRET', (value) => CRON_SECRET_PATTERN.test(value))
+  check('DATABASE_CA_CERT', (value) => value.includes(CERTIFICATE_MARKER))
+
+  const ordered = PRODUCTION_ENV_NAMES.filter((name) => invalid.includes(name))
+  return hasSslUrlParam(env.DATABASE_URL ?? '') ? [...ordered, 'DATABASE_URL'] : ordered
+}
+
+export function formatInvalidProductionEnvMessage(invalid: readonly string[]): string {
+  return [
+    `${LOG_PREFIX} Missing or invalid production environment variables: ${invalid.join(', ')}.`,
+    'Check them in the Vercel project environment variables (DATABASE_URL must not contain SSL parameters). Values are not shown.',
+  ].join('\n')
+}
+
 export type DatabaseTarget = { host: string; port: number; database: string }
 
 /** DATABASE_URL에서 접속 대상만 꺼낸다. 사용자 이름·비밀번호는 결과에 담지 않는다. 해석할 수 없으면 null. */
@@ -188,6 +249,14 @@ export async function runPreflight(
   const missing = findMissingEnv(env)
   if (missing.length > 0) {
     return { ok: false, message: formatMissingEnvMessage(missing) }
+  }
+
+  // 운영 빌드의 build·start는 운영 변수까지 확인한다(SPEC-DEPLOY-001 REQ-DEPLOY-001). DB에는 연결하지 않는다
+  if ((command === 'build' || command === 'start') && isProductionBuild(env)) {
+    const invalid = findInvalidProductionEnv(env)
+    if (invalid.length > 0) {
+      return { ok: false, message: formatInvalidProductionEnvMessage(invalid) }
+    }
   }
 
   if (DB_COMMANDS.includes(command)) {

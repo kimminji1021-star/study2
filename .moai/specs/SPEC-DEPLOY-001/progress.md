@@ -224,6 +224,103 @@ $ pnpm exec playwright test tests/e2e/deploy.spec.ts -g "401"
 
 **Gaps(M2)**: Vercel에서의 실제 Cron 호출·보호 통과(R1)는 M5 수동 확인. `git.deploymentEnabled` 문법 미확인(M5). 커밋은 이 작업 트리에서 하지 않음(Windows Smart App Control이 `moai` pre-commit 훅을 막음) — 사용자가 커밋.
 
+### M3·M4 — 저장소 켜짐 동작·업로드 안내, 운영 설정 점검·신뢰 경계·로그 가림·검색 제외 (2026-11-18, 기준 HEAD `b3976bb`, 작업 트리 `.claude/worktrees/agent-ae1c0a316f1df9c6d`)
+
+**기준선**: M2 품질 게이트와 같은 HEAD — `pnpm test` 742, `pnpm e2e` 98(오케스트레이터 제공, M2 기록과 같음). 로그 `.moai/state/verify/deploy-m3m4/`.
+
+**RED (구현 전, 원문 발췌 — `red-unit-1.log`, `red-integration-1.log`, `red-e2e-1.log`, `red-unit-2.log`)**:
+
+```
+$ pnpm exec vitest run --project unit tests/unit/production-env.spec.ts tests/unit/log-redaction.spec.ts tests/unit/repo-rules.spec.ts --coverage.enabled=false
+ FAIL  |unit| tests/unit/log-redaction.spec.ts
+Error: Cannot find module '../../src/lib/log-redaction' imported from …/tests/unit/log-redaction.spec.ts
+ FAIL  |unit| tests/unit/production-env.spec.ts
+TypeError: PRODUCTION_ENV_NAMES is not iterable
+AssertionError: expected 'undefined' to be 'string' // Object.is equality          (media admin.description)
+AssertionError: expected [ 'node:path', 'node:url', …(16) ] to include './lib/log-redaction'
+AssertionError: expected '// 신청 횟수 제한 — SPEC-APPLY-001 REQ-APPL…' to contain 'https://vercel.com/docs/headers/reque…'
+AssertionError: src/app/robots.ts가 있어야 한다: expected false to be true
+ Test Files  3 failed (3)
+      Tests  4 failed | 86 passed (90)
+
+$ pnpm exec vitest run --project integration tests/integration/deploy-config.spec.ts tests/integration/log-redaction.spec.ts --coverage.enabled=false
+     × VERCEL_ENV=production에서 CRON_SECRET이 비면 build 점검이 이름만 출력하고 실패한다
+AssertionError: expected +0 not to be +0 // Object.is equality
+Error: Cannot find module '../../src/lib/log-redaction' imported from …/tests/integration/log-redaction.spec.ts
+ Test Files  2 failed (2)
+      Tests  1 failed | 7 passed (8)
+
+$ pnpm exec playwright test tests/e2e/noindex.spec.ts
+    Expected: 200  Received: 404                      (/robots.txt)
+    Error: /  Expected substring: "noindex, nofollow"  Received string: ""   (X-Robots-Tag)
+    Error: /  expect(locator).toHaveCount(expected) failed  Expected: 1  Received: 0   (로봇 메타 태그)
+  3 failed
+
+$ pnpm exec vitest run --project unit tests/unit/repo-rules.spec.ts -t "main 가지만" --coverage.enabled=false
+AssertionError: expected undefined to deeply equal { '**': false, main: true }
+      Tests  1 failed | 90 skipped (91)
+```
+
+RED에서 이미 통과한 시험(회귀 방지 시험): M3 통합 4건(가짜 S3 값 → `disableLocalStorage: true`·처리기 1개, S3 없음 → 로컬 `media/`, 두 설정의 필드 목록 같음, 서명 주소 엔드포인트 없음)과 CSRF 2건, 저장소 규칙 "s3Storage 옵션에 접근 규칙 해제·서명 주소·직접 업로드 없음" — M1이 플러그인 등록·옵션을 이미 이 형태로 넣었기 때문이며, 이번 시험은 그 상태를 고정한다.
+
+**GREEN**: 단위 6개 파일 `Test Files 6 passed (6)`, `Tests 236 passed (236)`(`green-unit-1.log`, 기존 `preflight.spec.ts`·`preflight-cli.spec.ts`·`deploy-config.spec.ts` 포함). 통합 5개 파일 `Tests 22 passed (22)`(`green-integration-1.log`, 기존 `pii-logging`·`admin-pii-logging`·`config-env` 포함). E2E `tests/e2e/noindex.spec.ts` `3 passed (29.0s)`(`green-e2e-1.log`).
+
+**기록 항목 (plan.md §F M3·M4)**
+
+| 항목 | 값 |
+|---|---|
+| 업로드 안내 위치 | `src/collections/Media.ts` `admin.description` — Payload 3.93.0은 컬렉션 설명을 목록 화면과 문서(업로드) 편집 화면 머리에 그린다(`@payloadcms/next/dist/views/Document/renderDocumentSlots.js` 59~69, `@payloadcms/ui/dist/views/Edit/index.js` 470). 문구: `사진은 5MB까지 올릴 수 있지만, 실제 사이트에서는 4MB 이하 파일을 올려 주세요.` 생성 파일 `src/payload-types.ts`의 `Media` JSDoc에도 같은 문구가 들어감(`pnpm generate:types` 결과와 같음). 5MB 판정·`File size exceeds the 5 MB limit.` 불변 |
+| 저장소 켜짐 확인 방법 | `tests/integration/deploy-config.spec.ts` — `vi.stubEnv`로 가짜 S3 값(`test-` 접두어, `.invalid` 주소)을 준 뒤 `payload.config.ts`를 새로 불러와 sanitize 결과를 본다. S3 클라이언트는 업로드 때에만 만들어지므로(`@payloadcms/storage-s3/dist/index.js` `getStorageClient`) 네트워크 연결 없음 |
+| 익명 미디어 읽기 범위 | 파일 요청은 `checkFileAccess` → 어댑터 처리기 순서(plan §A.2 `getFile.js`), `disablePayloadAccessControl` 미사용(저장소 규칙) → `media` 읽기 규칙 유지. 기존 AC-TOUR-006(`catalog-api.spec.ts`)·AC-LANDING-003 E2E·통합 통과(전체 게이트) |
+| 운영 점검 문구 | `[preflight] Missing or invalid production environment variables: <이름, …>.` + `Check them in the Vercel project environment variables (DATABASE_URL must not contain SSL parameters). Values are not shown.` |
+| 운영 점검 규칙 | `VERCEL_ENV === 'production'`인 `build`·`start`만. `NEXT_PUBLIC_SERVER_URL`은 `https:`이고 `new URL(값).origin === 값`(경로·끝 빗금·질의·조각·사용자 정보 없음). `CRON_SECRET` `^[A-Za-z0-9]{16,}$`. `DATABASE_CA_CERT`에 `-----BEGIN CERTIFICATE-----`. S3 다섯 개 필수. `DATABASE_URL` 질의 인자 `ssl`·`sslmode`·`sslrootcert`·`sslcert`·`sslkey`(대소문자 무시) 거부 — REQ의 두 인자에 더해, pg-connection-string이 같은 방식으로 코드의 `ssl` 설정을 덮어쓰는 세 인자도 막음 |
+| Vercel 빌드 스크립트 연결 | `scripts/vercel-build.mjs` 첫 단계가 이미 `node scripts/preflight.mjs build`이고 Vercel 환경(`VERCEL_ENV=production`)을 물려받으므로 변경 없음(M1 단위 시험이 순서 고정) |
+| 로그 가림 | `src/lib/log-redaction.ts` — `redactErrorForLog`(pino `serializers.err`: `params`·`detail` 삭제, 모든 문자열의 줄 머리 `params:`부터 다음 `    at` 줄 전까지 `params: [REDACTED]`, `cause` 재귀 깊이 8, 순환 참조 처리), `hooks.logMethod`(문자열 인자·병합 객체의 `msg`·`err` 외 오류 값·printf 인자 가림, `{ err }`만 있고 메시지가 없으면 pino가 `err.message`를 쓰므로 가린 문구를 `msg`에 넣음, 첫 인자가 오류면 `{ err }` + 가린 메시지로 바꿈). `payload.config.ts` `logger: { options: redactingLoggerOptions(), destination: defaultLoggerOptions }` — 출력은 Payload 기본과 같은 pino-pretty 스트림 |
+| 로그 가림 통합 증거 | 실제 PostgreSQL `insert into application_attempts … values (<표식>, null, …)` NOT NULL 위반 → `DrizzleQueryError`(문구·`params`·`cause.detail`에 표식, `cause.code` `23502` — 준비 단언으로 확인) → Payload `logError`·`{ err, msg }` 기록 → 메모리 출력에 표식 0회, `insert into application_attempts`·`23502` 남음. 실행 중 Payload 인스턴스의 pino `serializers.err === redactErrorForLog` |
+| 검색 제외 | `src/app/robots.ts`(`User-Agent: *` / `Disallow: /`, 사이트맵 없음 — `next build` 경로 목록 `○ /robots.txt`), `next.config.ts` `headers()` `source: '/:path*'` → `X-Robots-Tag: noindex, nofollow`, `(frontend)/layout.tsx` `metadata.robots: { index: false, follow: false }`. E2E: `/`·`/tours`·`/admin`·`/api/tours`·공개 투어 이미지·`/robots.txt`·`/no-such-page`(404) 머리글, `/`·`/tours` 메타 태그 정확히 1개 |
+| 접속 IP 근거 | `rate-limit.ts` `clientIpFromHeaders` 위 `@MX:NOTE` — Vercel이 `x-forwarded-for`를 덮어씀, `https://vercel.com/docs/headers/request-headers`. 동작 불변 |
+| `vercel.json` `git.deploymentEnabled` | 공식 문서 https://vercel.com/docs/project-configuration/git-configuration 를 2026-11-18 이 작업 환경에서 `curl`로 받아 확인(작업 도구에 WebFetch 없음): 형식 "Object of key branch identifier String and value Boolean, or Boolean", 가지 이름은 minimatch, "If a branch matches multiple rules and at least one rule is true, a deployment will occur." → `{ "**": false, "main": true }` 적용(`main`만 자동 배포). 실제 동작은 M5 첫 배포에서 확인 |
+
+**`pnpm audit --json` 재측정(2026-11-18, `audit.json`)**: `{"moderate":2,"high":3}` — 의존성 변경 없음(`package.json`·`pnpm-lock.yaml` 차이 없음). M1 대비 새 권고 1건은 새로 공개된 권고다.
+
+| 권고 | 심각도 | 도달 경로 | 판단 |
+|---|---|---|---|
+| happy-dom GHSA-834v-8h66-3h79 / GHSA-c8p4-j97h-3vg8 | high | `@payloadcms/richtext-lexical>@lexical/headless>happy-dom`, `vitest>happy-dom` | M1과 같음 — 실행 경로 미도달 |
+| picomatch GHSA-fc5q-39xc-vjpf (새로 공개, "ReDoS through single-branch repeated extglobs", `<=4.0.7`, 수정 버전 없음) | high | 104개 경로, 설치본 4.0.7·2.3.2. `payload>json-schema-to-typescript>tinyglobby(>fdir)>picomatch`(타입 생성), `sass>chokidar>anymatch·readdirp>picomatch`(관리자 스타일 빌드·감시), `find-node-modules>findup-sync>micromatch>picomatch`, 그 밖 `next`·`vitest`·`eslint-config-next`·`vite` 경유 | 실행 경로 미도달로 판단 — 모두 빌드·타입 생성·파일 감시·린트·시험 도구 경로이고, 요청 입력이 글로브 패턴으로 쓰이는 곳이 없다. 수정 버전이 없어 상향 불가. 차단자 아님(오케스트레이터 확인 권장) |
+| esbuild GHSA-67mh-4wv8-2f99 | moderate | `@payloadcms/db-postgres>drizzle-kit>…>esbuild` | M1과 같음 |
+| minimatch GHSA-g3hv-75wg-m249 | moderate | `eslint-config-next>…>minimatch`(11) | M1과 같음 |
+
+**품질 게이트 (2026-11-18, HEAD `b3976bb` + 스테이징 변경 — 로그 `.moai/state/verify/deploy-m3m4/gate-*.log`)**
+
+| 명령 | 결과 |
+|---|---|
+| `pnpm lint` | 종료 0, 경고 0 |
+| `pnpm format:check` | 종료 0, `All matched files use Prettier code style!` |
+| `pnpm typecheck` | 종료 0 |
+| `pnpm migrate:check` | 종료 0, `[migrate:check] OK: no new migration for no-s3 and fake-s3.` 이어서 `git status --short src/migrations` 출력 없음 |
+| `pnpm build` | 종료 0, 경로 목록에 `ƒ /api/cron/cleanup`, `○ /robots.txt` |
+| `pnpm test` | 종료 0, `Test Files 53 passed (53)`, `Tests 812 passed (812)` (기준선 742 + 70), `Lines : 99.33% ( 745/750 )`, `log-redaction.ts` 라인 97.82%, `preflight.ts` 100% |
+| `pnpm e2e` | 종료 0, `101 passed (3.0m)` (기준선 98 + 3) |
+| `pnpm generate:types` / `pnpm generate:importmap` | 종료 0, `payload-types.ts`는 `Media` 설명 JSDoc 2줄만 차이(위 기록), `importMap.js` 차이 없음 |
+| 표식 잔여(컨테이너 안 psql) | `application_attempts key_hash LIKE 'test-%'` 0 · `tours slug LIKE 'test-%'` 0 · `users email LIKE '%@example.test'` 0 · `applications email LIKE 'test-%'` 0 · `media filename LIKE 'test-%'` 0 · `sumbi_migration_check%` DB 0 · 개발 신청 ID 2033 존재 1 |
+| 보존 목록 diff(`git diff --stat b3976bb -- .prettierignore eslint.config.mjs .gitattributes src/lib/occupancy.ts … src/lib/access.ts package.json pnpm-lock.yaml pnpm-workspace.yaml`) | 출력 없음 |
+| 비밀값 모양 검사(AC-DEPLOY-015 ①②③ 정규식, 추적·미추적 `src`·`tests`·`scripts`·`vercel.json`·`next.config.ts`) | 일치 없음 |
+
+**AC 상태(M3·M4 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-DEPLOY-001 | PASS | 단위 `production-env.spec.ts`(올바름 → 빈 목록, 8개 변수 하나씩 빠짐·공백 → 그 이름만, 주소 형식 오류 7종, `CRON_SECRET` 15자·특수문자·공백·앞뒤 공백, PEM 아님, SSL 인자 6종, 출력에 값 표식 없음, `build`·`start` 운영 분기, `VERCEL_ENV` 없음·`preview`·`development`·`Production` → 운영 점검 안 함), 통합 자식 프로세스(운영 + `CRON_SECRET` 빔 → 종료 ≠ 0·이름만·표식 없음, `VERCEL_ENV` 비우면 운영 문구 없음·종료 0), 기존 `preflight.spec.ts`·`preflight-cli.spec.ts` 통과 |
+| AC-DEPLOY-005 | PASS | 통합 `NEXT_PUBLIC_SERVER_URL=https://test-csrf.example.invalid` → `serverURL` 같음·`csrf` 포함, 빈 값 → 빈 항목 없음. 저장소 규칙 Vercel 근거 주석·문서 주소. 기존 `clientIpFromHeaders`·`rateLimitKey` 단위 시험 통과 |
+| AC-DEPLOY-006 | PASS(로컬 부분) | 통합(가짜 S3 → `disableLocalStorage: true`·처리기 ≥ 1·`storage-s3` 엔드포인트 없음, 없음 → `staticDir` = 저장소 루트 `media`·로컬 저장, 두 설정 필드 목록 같음·`prefix`·`_objectKey` 포함), 저장소 규칙(옵션에 `disablePayloadAccessControl`·`signedDownloads`·`clientUploads` 없음, 안내 문구 `4MB 이하`·5MB 판정·오류 문구 불변). 실제 저장소 입출력은 AC-DEPLOY-014(M5) |
+| AC-DEPLOY-011 | PASS | 단위 `log-redaction.spec.ts`(문자열·스택 가림, 직렬화에서 `params`·`detail` 없음·SQL·`code`·이름 남음, 중첩 cause, 순환·깊은 중첩, 실제 pino 메모리 로거로 `{ err }`·문자열 msg·`{ err, msg }`·오류 첫 인자·printf 인자 — 출력에 표식 없음), 통합 실제 DB 오류(위), 저장소 규칙 `logger: { options: redactingLoggerOptions(),` |
+| AC-DEPLOY-012 | PASS | E2E `noindex.spec.ts` 3건(robots.txt, 7개 응답의 `x-robots-tag`, 메타 태그 1개), 저장소 규칙 robots 파일·사이트맵 없음. 기존 SPEC-LANDING-001 E2E 포함 전체 101 통과 |
+| AC-DEPLOY-009 (Preview 끄기 추가) | PASS | 저장소 규칙 `git.deploymentEnabled` = `{ "**": false, "main": true }` + 기존 M2 규칙 통과 |
+
+**@MX 태그 변경**: 추가 — `log-redaction.ts` `@MX:NOTE`(가림 규칙·범위의 한계), `@MX:ANCHOR`(+`@MX:REASON`, `redactingLoggerOptions` — 설정·단위·통합 시험이 같은 옵션 사용), `rate-limit.ts` `@MX:NOTE`(Vercel `x-forwarded-for` 덮어쓰기). 제거·갱신 없음.
+
+**Gaps(M3·M4)**: ① 실제 Supabase Storage 업로드·내려받기와 익명 공개 범위는 로컬에서 재현하지 않음(AC-DEPLOY-014, M5). ② `git.deploymentEnabled`의 `**`가 Vercel에서 `/`가 든 가지 이름까지 막는지, `main`이 그대로 배포되는지는 실제 배포에서만 확인 가능(M5 — `main` 푸시 뒤 운영 배포가 생기는지, 다른 가지 푸시에 배포가 없는지). ③ 로그 가림은 Payload 설정의 로거만 덮음 — `console.error` 직접 출력, `payload migrate` 명령줄 자체 로거는 범위 밖(plan §B.6, R18). ④ pg 오류의 다른 칸(`where`·`hint` 등)과 오류 문구 자체에 값이 들어가는 오류(예: 형식 변환 실패 `invalid input syntax for type integer: "<값>"`)는 REQ-DEPLOY-011 범위(params·detail·`params:` 이후) 밖이라 가리지 않음. ⑤ 커밋은 이 작업 트리에서 하지 않음(Smart App Control) — 사용자가 커밋.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

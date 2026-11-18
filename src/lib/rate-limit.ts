@@ -13,6 +13,9 @@ const KEY_PREFIX = 'apply-rate-limit:'
 
 type HeaderReader = { get(name: string): string | null }
 
+// @MX:NOTE: [AUTO] Vercel은 x-forwarded-for를 클라이언트 공개 IP로 덮어써 외부에서 보낸 값을 전달하지 않는다(위조 방지).
+//   그래서 Vercel 뒤에서는 첫 값이 실제 접속 IP다 — https://vercel.com/docs/headers/request-headers (SPEC-DEPLOY-001 REQ-DEPLOY-005).
+//   Vercel 앞에 다른 프록시·CDN을 두면 이 전제가 깨지므로 그때 다시 본다(plan.md §B.7)
 /**
  * 접속 IP: x-forwarded-for의 첫 값(공백 제거) → 없으면 x-real-ip → 없으면 'unknown'.
  * 'unknown'이면 모든 익명 요청이 한 키로 묶인다(로컬 개발에서만 생길 수 있음, plan.md §B.5). 서버 액션(M5)이 부른다.
