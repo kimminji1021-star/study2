@@ -321,6 +321,127 @@ RED에서 이미 통과한 시험(회귀 방지 시험): M3 통합 4건(가짜 S
 
 **Gaps(M3·M4)**: ① 실제 Supabase Storage 업로드·내려받기와 익명 공개 범위는 로컬에서 재현하지 않음(AC-DEPLOY-014, M5). ② `git.deploymentEnabled`의 `**`가 Vercel에서 `/`가 든 가지 이름까지 막는지, `main`이 그대로 배포되는지는 실제 배포에서만 확인 가능(M5 — `main` 푸시 뒤 운영 배포가 생기는지, 다른 가지 푸시에 배포가 없는지). ③ 로그 가림은 Payload 설정의 로거만 덮음 — `console.error` 직접 출력, `payload migrate` 명령줄 자체 로거는 범위 밖(plan §B.6, R18). ④ pg 오류의 다른 칸(`where`·`hint` 등)과 오류 문구 자체에 값이 들어가는 오류(예: 형식 변환 실패 `invalid input syntax for type integer: "<값>"`)는 REQ-DEPLOY-011 범위(params·detail·`params:` 이후) 밖이라 가리지 않음. ⑤ 커밋은 이 작업 트리에서 하지 않음(Smart App Control) — 사용자가 커밋.
 
+### M5(로컬·문서 부분) — 배포 안내, 환경 변수 목록, 비밀값 검사 (2026-11-18, 기준 HEAD `becc1a4`, 작업 트리 `.claude/worktrees/agent-ab279713b030ced33`)
+
+**범위**: plan §F M5 중 실제 배포 없이 할 수 있는 부분 — `.env.example` 운영 변수 이름, README "10. 배포" 절(변수 표·사용자 단계 요약·빌드와 마이그레이션 규칙, M2의 수동 정리 SQL 유지), AC-DEPLOY-015 저장소 규칙, plan §I.2의 Vercel 공식 문서 재확인. 실제 배포 확인(AC-DEPLOY-013·014)은 아래 "실제 배포 확인 대기" 목록으로 남긴다. 로그 `.moai/state/verify/deploy-m5/`.
+
+**기준선**: M3·M4 게이트와 같음 — `pnpm test` 812, `pnpm e2e` 101(오케스트레이터 제공, M3·M4 기록과 같음).
+
+**RED (원문 발췌 — `red-unit-1.log`, `red-e2e-empty-cron-secret.log`)**:
+
+```
+$ pnpm exec vitest run --project unit tests/unit/repo-rules.spec.ts -t "M5" --coverage.enabled=false
+     × AC-DEPLOY-015 .env.example에 운영 변수 이름이 모두 값 없이 있다
+     × AC-DEPLOY-015 README 배포 절의 변수 표는 운영 변수 목록과 같고 모두 .env.example에 있다
+     × AC-DEPLOY-015 README 배포 절은 사용자 단계 안내(plan.md §I)와 빌드 설정을 가리킨다
+AssertionError: .env.example에 값 없는 CRON_SECRET= 줄이 있어야 한다: expected [ 'DATABASE_URL=', …(7) ] to include 'CRON_SECRET='
+AssertionError: README 배포 절 표에서 변수 이름을 뽑아야 한다: expected 0 to be greater than or equal to 1
+AssertionError: expected '10. 배포\n\n운영 배포는 Vercel(함수 리전 서울 `icn…' to contain '.moai/specs/SPEC-DEPLOY-001/plan.md'
+      Tests  3 failed | 91 skipped (94)
+
+# 재현(Rule 4): .env.example에 빈 운영 변수 줄을 더하면, 그것을 복사한 .env의 빈 CRON_SECRET이 process.loadEnvFile로
+# 빈 문자열이 되어 playwright.config.ts의 `=== undefined` 판정을 지나친다. 같은 조건을 환경 변수로 재현:
+$ CRON_SECRET= pnpm exec playwright test tests/e2e/deploy.spec.ts
+    Expected: >= 16
+    Received:    0
+  3 failed
+  1 passed (34.2s)
+```
+
+원인 확인: 실패한 세 시험은 모두 러너의 `process.env.CRON_SECRET` 길이(≥ 16) 단언에서 0을 받았다 — 증상(401)이 아니라 비밀값 생성 조건 자체가 원인이다. 수정은 `playwright.config.ts`의 판정을 "값 없음 또는 공백뿐"으로 바꾼 한 줄(주석 포함 3줄).
+
+**GREEN**: `tests/unit/repo-rules.spec.ts` 전체 `Tests 94 passed (94)`(`green-unit-1.log`). `CRON_SECRET= pnpm exec playwright test tests/e2e/deploy.spec.ts` → `4 passed (23.7s)`(`green-e2e-empty-cron-secret.log`). 추가 확인: 새 운영 전용 변수 8개를 모두 빈 값으로 둔 채(`.env.example`을 그대로 복사한 `.env`와 같은 조건) `pnpm test` → `Tests 815 passed (815)`(`extra-test-empty-deploy-vars.log`).
+
+**바꾼 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `.env.example` | "운영(Vercel) 전용 — 로컬에서는 비워 둔다" 묶음 추가: `CRON_SECRET`, `DATABASE_CA_CERT`, `DATABASE_POOL_MAX`, `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`(모두 값 없음, 용도·형식 주석). `DATABASE_URL`·`PAYLOAD_SECRET`·`NEXT_PUBLIC_SERVER_URL`은 기존 줄 |
+| `README.md` | §2 표 아래 운영 전용 변수는 로컬에서 비워 둔다는 안내 1문단. §10 배포에 "사용자가 직접 하는 단계"(plan §I.1~I.5 요약과 경로), "운영 환경 변수" 표 11개, "빌드와 마이그레이션"(빌드 명령 순서, `main`만 배포, `ENABLE_EXPERIMENTAL_COREPACK`, Node.js 버전 확인, 마이그레이션 규칙, 원격 DB 거부) 추가. M2의 예약 정리·수동 정리 SQL 절은 그대로 |
+| `playwright.config.ts` | 시험용 `CRON_SECRET` 생성 조건 `=== undefined` → `!process.env.CRON_SECRET?.trim()` |
+| `tests/unit/repo-rules.spec.ts` | `SPEC-DEPLOY-001 M5 저장소 규칙` 3건 — 기준 목록은 `src/lib/preflight.ts` `PRODUCTION_ENV_NAMES` + `DATABASE_URL`·`PAYLOAD_SECRET`·`DATABASE_POOL_MAX`(11개). `.env.example`에 모두 `NAME=`로 있음·이름 중복 없음, README 배포 절 표의 이름 = 기준 목록(양방향)이고 모두 `.env.example`에 있음, 배포 절이 `plan.md` §I·`ENABLE_EXPERIMENTAL_COREPACK`·빌드 명령을 가리킴 |
+
+**Vercel 공식 문서 재확인 (plan §I.2, 2026-11-18, 이 작업 환경에서 `curl`로 `https://vercel.com/<경로>.md` 받음 — 사본 `.moai/state/verify/deploy-m5/vercel-docs/`)**
+
+| 항목 | plan §I.2 내용 | 문서 내용 | 판정 |
+|---|---|---|---|
+| Corepack 변수 이름 | `ENABLE_EXPERIMENTAL_COREPACK` = `1` | `docs/builds/configure-a-build`(last_updated 2026-08-28) "environment variable with name `ENABLE_EXPERIMENTAL_COREPACK` and value `1`" + `packageManager`. `docs/package-managers`(2026-08-11): 잠금 파일 `lockfileVersion: 9.0` → "pnpm 9 or 10", pnpm 지원 버전 표에 11 포함 | 맞음 |
+| Node.js 버전 설정 | Settings → Build and Deployment → Node.js Version: 24.x | 경로 맞음(`docs/functions/runtimes/node-js/node-js-versions`, 2026-02-27, 선택지 26.x 기본·24.x·22.x). 그러나 "`engines#node` ... override the one you have selected in the Project Settings", 표: `>=22.0.0` → latest 26.x. 이 저장소 `engines.node`는 `^22.23.4 \|\| ^24.22.1 \|\| >=26.0.0` | **고칠 점** — 프로젝트 설정 24.x가 무시되고 26.x가 쓰일 가능성이 높다(합집합 범위 해석은 문서에 없음, 빌드 로그로 확인). 또 Node.js 26 문서에는 Corepack 페이지가 없다(`nodejs.org/docs/latest-v26.x/api/corepack.html` 404, v24는 200) — Node 26 빌드에서 `ENABLE_EXPERIMENTAL_COREPACK`이 동작하는지는 문서로 확인 안 됨 |
+| 보호 범위 이름 | Vercel Authentication + All Deployments | `docs/deployment-protection`(2026-09-15): 범위 "Standard Protection"·"All Deployments"·"(Legacy) …", "Protecting all deployments is available on all plans", Password Protection "Not available on Hobby". Vercel Authentication 문서: Hobby는 계정당 외부 사용자 1명 | 맞음 |
+| Cron 수동 실행 화면 | Settings → Cron Jobs(또는 Schedules → Cron Jobs) → Run → View Logs | `docs/cron-jobs/manage-cron-jobs`(2026-08-11): "Open **Schedules** in the sidebar and select the **Cron Jobs** tab", 버튼은 **View Logs**·**Disable Cron Jobs**만 기술 — 대시보드 **Run** 버튼은 문서에 없음. 즉시 실행은 CLI `vercel crons run /api/cron/cleanup`(`docs/cli/crons`, 운영 배포에 있는 Cron만) | **고칠 점** — 경로는 "Schedules → Cron Jobs"로 확정, Run 버튼이 화면에 없으면 CLI 대안 필요 |
+| Cron과 보호의 관계(R1) | 문서에 없음 → 실제 확인 | Cron·보호·보호 우회 문서(`methods-to-bypass-deployment-protection`) 어디에도 cron 언급 없음. Cron은 "production deployment URL"로 GET, 리디렉트를 따라가지 않음(3xx는 그대로 종료) | 그대로 — 실제 확인 필요(R1). 보호에 막혀 로그인 화면 리디렉트가 오면 Cron 로그에는 3xx로 남고 정리는 안 됨 |
+| Sensitive 표시 | 각 변수를 Sensitive로 | `docs/environment-variables/sensitive-environment-variables`(2026-08-28): 유형이 **Config / Secret**으로 바뀜, "Existing Sensitive environment variables continue to work as Secrets", Secret 32자 이상 값은 빌드 로그에서 `[REDACTED]` | **고칠 점** — 화면 이름은 Type **Secret**. README·`.env.example` 주석은 이 이름으로 적음 |
+
+**오케스트레이터 결정 반영 (2026-11-18, 같은 작업 트리·같은 커밋)**
+
+1. **`engines.node` 좁힘 — 범위 결정**: `package.json` `engines.node` `^22.23.4 || ^24.22.1 || >=26.0.0` → `^22.23.4 || ^24.22.1`. 근거는 위 표의 Node.js 행(Vercel: `engines#node`가 프로젝트 설정보다 우선, `>=22.0.0` → 최신 26.x / Node 26 Corepack 문서 404, v24 200). 이제 Vercel이 고를 수 있는 주 버전은 24.x·22.x뿐이라 프로젝트 설정 24.x가 그대로 쓰이고, `packageManager` + `ENABLE_EXPERIMENTAL_COREPACK`으로 pnpm 11.28.9를 고정하는 문서상 경로 안에 든다. 로컬 개발 Node는 `v24.22.1`(`node -v`)로 범위 안. 함께 바꾼 곳: `tests/unit/repo-rules.spec.ts` `SUPPORTED_NODE_RANGE`(같은 값)와 경계 시험 `26.0.0` → 허용 안 함, README §1-1·1-2(지원 범위, Node 26 안내), README §10 Node.js 버전 줄, `.moai/project/tech.md` Node.js 범위 줄. SPEC-INFRA-001 문서(완료 SPEC)의 옛 범위 기록은 고치지 않음.
+   - RED(`red-unit-engines.log`): `× engines.node는 지원 범위(Payload ∩ Vitest)와 같거나 더 좁다` `AssertionError: expected false to be true`, `× engines.node는 Node.js 26.0.0를 허용=false` `AssertionError: expected true to be false`, `Tests 2 failed | 6 passed | 86 skipped (94)`. GREEN(`green-unit-engines.log`): `Tests 94 passed (94)`.
+   - 잠금 파일: `pnpm install --frozen-lockfile` 종료 0 `Already up to date`, `git diff --stat pnpm-lock.yaml` 출력 없음(바뀌지 않음). `pnpm install --frozen-lockfile --config.node-version=26.0.0` 종료 1 `Expected version: ^22.23.4 || ^24.22.1`(`install-node26-rejected.log`), 이어서 일반 설치 다시 종료 0.
+2. **pre-commit 게이트 시간 한도**: `.moai/config/sections/gate.yaml` `gate.timeouts.test` 120 → 600(초). 첫 커밋 시도에서 훅이 `quality gate timed out: npm test exceeded 2m0s`로 실패했다 — 전체 시험(`pnpm test` 815건 + 커버리지)이 2분을 넘는다. 시험을 건너뛰지 않고 실제로 돌리게 한도만 늘린다(`skip_tests: false` 유지).
+
+**manager-spec에 넘길 plan.md §I 고칠 점(이 작업은 plan.md 본문을 고치지 않음)**
+
+- §I.2 5번: "가능하면 **Sensitive**로 표시" → 변수 Type을 **Secret**으로(Vercel이 Config/Secret 유형으로 바꿈, 기존 Sensitive는 Secret으로 동작).
+- §I.2 6번: Node.js Version 24.x — `engines.node`에서 26을 뺐으므로 이제 프로젝트 설정 24.x가 실제로 쓰인다(빌드 로그로 확인). §B.9 Node 줄의 범위 표기도 `^22.23.4 || ^24.22.1`로.
+- §I.4 7번: Cron 위치는 **Schedules → Cron Jobs** 탭. 문서에 대시보드 Run 버튼이 없으므로, 화면에 Run이 없으면 Vercel CLI `vercel crons run /api/cron/cleanup`로 즉시 실행하고 View Logs로 상태 확인.
+- §I.2 5번 `ENABLE_EXPERIMENTAL_COREPACK` 이름은 문서로 확인됨("run 단계에서 다시 확인" 문구 정리 가능).
+
+**실제 배포 확인 대기 (AC-DEPLOY-013·014 — PENDING-live, 사용자가 plan §I 수행 뒤 오케스트레이터가 이 표를 채움)**
+
+| # | 확인 | 근거 위치 | 상태 |
+|---|---|---|---|
+| L0 | `main` 푸시 뒤 운영 배포만 생기고 다른 가지 푸시에는 배포가 없다(`git.deploymentEnabled`) | M3·M4 Gap ② | PENDING-live |
+| L1 | 빌드 로그: pnpm `11.28.9`, `[vercel-build] migrate: pnpm exec payload migrate` 뒤 마이그레이션 적용 줄, 마지막 성공. **Node 버전 줄(24.x인지 26.x인지)** 함께 기록 | §I.2 9번, AC-014 Given | PENDING-live |
+| L2 | 미로그인 브라우저·`Invoke-WebRequest -MaximumRedirection 0`으로 `/`, `/tours`, `/admin`, `/api/tours`, `/robots.txt` → Vercel 로그인 화면·401·리디렉트(숨비투어 화면·JSON 아님) | AC-013 | PENDING-live |
+| L3 | Vercel 로그인 브라우저에서 같은 주소가 정상 | AC-013 | PENDING-live |
+| L4 | Deployment Protection 화면: Vercel Authentication 켜짐, All Deployments | AC-013 | PENDING-live |
+| L5 | 함수 리전 `icn1` — 배포 상세 Functions/Resources 표시, 또는 `/api/tours`의 `x-vercel-id`를 `::`로 나눈 **마지막 칸 바로 앞 칸** | §I.4 0번 | PENDING-live |
+| L6 | 첫 관리자 생성·로그인 | §I.3 | PENDING-live |
+| L7 | 사진 2장 업로드, 업로드 화면 "실제 사이트에서는 4MB 이하" 안내, Supabase `media` 버킷에 두 파일 | §I.4 1번 | PENDING-live |
+| L8 | 관리자 로그아웃(Vercel 로그인 유지): 공개 투어 대표 사진 보임, 쓰이지 않은 사진 주소 오류. 홈 대표 사진 지정 → 보임, 비운 뒤 → 다시 오류 | §I.4 2·3번 | PENDING-live |
+| L9 | 신청 1건 접수 완료 → 관리자 확정 저장 → 참가자 CSV 내려받기 | §I.4 4~6번 | PENDING-live |
+| L10 | Supabase Data API 꺼짐 화면 + 공개 키 `Invoke-WebRequest …/rest/v1/applications?select=id&limit=1` 오류 상태 코드(코드만 기록) | §I.4 9번 | PENDING-live |
+| L11 | 예약 정리 (가) Schedules → Cron Jobs 수동 실행(화면에 Run이 없으면 CLI `vercel crons run /api/cron/cleanup`) 200 → 그 뒤 확인용 신청(시각 기록) → 26시간 이상 다른 신청·실행·수동 정리 없음 → `select count(*) from application_attempts where attempted_at < now() - interval '26 hours';` = `0`, 또는 (나) "막힘(Q6)" + §I.5 SQL 결과 두 값 + 자동 삭제 확인을 2단계로 이월 | §I.4 7·8번, §I.5 | PENDING-live |
+| L12 | Fluid compute 켜짐/꺼짐(연결 예산 다시 계산 — §B.2) | §I.2 7번 | PENDING-live |
+| L13 | 확인용 `test-` 데이터 정리 | §I.4 10번 | PENDING-live |
+
+업로드가 실패하면 원인 후보(Vercel 4.5MB 본문 한도, `@aws-sdk/client-s3` 기본 체크섬과 Supabase S3 호환 — 미확인, plan §G R21)를 함께 적고 차단자로 보고한다(AC-014).
+
+**품질 게이트 (2026-11-18, HEAD `becc1a4` + M5 변경 — 로그 `.moai/state/verify/deploy-m5/gate-*.log`)**
+
+| 명령 | 결과 |
+|---|---|
+| `pnpm lint` | 종료 0(마지막 수정 뒤 `gate-lint-final.log`) |
+| `pnpm format:check` | 종료 0, `All matched files use Prettier code style!`(`gate-format-final.log`) |
+| `pnpm typecheck` | 종료 0(`gate-typecheck-final.log`) |
+| `pnpm test` | 종료 0, `Test Files 53 passed (53)`, `Tests 815 passed (815)`(기준선 812 + 3), `Lines : 99.33% ( 745/750 )`. 문구만 고친 뒤 `repo-rules.spec.ts` 다시 실행 `94 passed` |
+| `pnpm e2e` | 종료 0, `101 passed (3.5m)`(기준선과 같음) |
+| `pnpm build` | 종료 0, `ƒ /api/cron/cleanup`, `○ /robots.txt` |
+| `pnpm migrate:check` | 종료 0, `[migrate:check] OK: no new migration for no-s3 and fake-s3.`, 이어서 `git status --short src/migrations` 출력 없음 |
+| 빈 운영 변수 8개로 `pnpm test` / `pnpm e2e` | `815 passed` / `101 passed (3.4m)` |
+| 표식 잔여(컨테이너 안 psql) | `application_attempts key_hash LIKE 'test-%'` 0 · `tours` 0 · `users @example.test` 0 · `applications` 0 · `media` 0 · `sumbi_migration_check%` DB 0 · 개발 신청 ID 2033 존재 1 |
+
+**품질 게이트 2회차 (engines·gate.yaml 반영 뒤 — 로그 `gate2-*.log`)**
+
+| 명령 | 결과 |
+|---|---|
+| `pnpm lint` / `pnpm format:check` / `pnpm typecheck` | 모두 종료 0(`All matched files use Prettier code style!`) |
+| `pnpm test` | 종료 0, `Test Files 53 passed (53)`, `Tests 815 passed (815)`, `Lines : 99.33% ( 745/750 )` |
+| `pnpm e2e` | 첫 실행 종료 1: `99 passed`, `2 failed` — 둘 다 `/robots.txt` 500, 개발 서버 로그 `FATAL: An unexpected Turbopack error occurred` / `task is missing in memory or persistent storage — a stale reference to an already-collected or never-created task`(Turbopack 개발 캐시 내부 오류, `gate2-e2e.log`). `noindex.spec.ts`만 다시 실행 `3 passed`, 전체 다시 실행 종료 0 `101 passed (3.1m)`(`gate2-e2e-rerun.log`). 이번 변경은 robots 경로·Next 설정을 건드리지 않으며, 같은 코드에서 앞선 두 번의 전체 실행이 101 통과 — 간헐 실패로 기록 |
+| `pnpm build` | 종료 0, `ƒ /api/cron/cleanup`, `○ /robots.txt` |
+| `pnpm migrate:check` | 종료 0, `[migrate:check] OK: no new migration for no-s3 and fake-s3.`, `git status --short src/migrations` 출력 없음 |
+| 표식 잔여 | 위와 같음(0·0·0·0·0, 임시 DB 0, 2033 존재 1) |
+
+**AC 상태(M5 로컬 범위)**
+
+| AC | 상태 | 근거 |
+|---|---|---|
+| AC-DEPLOY-015 | PASS(로컬) | 저장소 규칙 M5 3건 + M2 수동 정리 SQL 2건 통과. `git grep` ①②③ 출력 없음·종료 코드 1, `git ls-files .vercel` 출력 없음(`.gitignore` 239행 `.vercel/`) |
+| AC-DEPLOY-013 | PENDING-live | 위 L2~L4 |
+| AC-DEPLOY-014 | PENDING-live | 위 L1, L5~L13 |
+
+**Gaps(M5 로컬)**: ① 실제 배포 동작 전부(AC-013·014)는 사용자 단계 뒤에만 확인 가능. ② `engines.node`를 `^22.23.4 \|\| ^24.22.1`로 좁혔으므로 Vercel이 24.x를 고를 것으로 보지만, 범위 합집합에서 어느 주 버전을 고르는지는 문서에 없다 — 빌드 로그의 Node·pnpm 버전으로 확인(L1). ③ Cron 화면의 Run 버튼 유무는 문서에 없음. ④ 문서 확인은 `curl`로 받은 마크다운 본문이며 화면 캡처는 아님. ⑤ 커밋 여부는 오케스트레이터 보고 참고.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 _<pending run-phase>_

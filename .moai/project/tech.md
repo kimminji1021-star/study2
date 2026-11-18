@@ -31,7 +31,7 @@
 
 - Node.js LTS (정확한 최소 버전은 Payload·Next.js 공식 요구사항 확인 필요)
 - 패키지 매니저: pnpm 11.28.9 (Corepack 사용, `README.md` 참고)
-- Node.js 범위: `^22.23.4 || ^24.22.1 || >=26.0.0` (`engineStrict: true`로 범위 밖 설치 차단)
+- Node.js 범위: `^22.23.4 || ^24.22.1` (`engineStrict: true`로 범위 밖 설치 차단. Node 26은 SPEC-DEPLOY-001 M5에서 제외 — Vercel이 `engines.node`로 버전을 고르고 Node 25부터 Corepack이 빠짐)
 - PostgreSQL — 다음 중 하나
   - Docker로 로컬 PostgreSQL 실행 (`docker-compose.yml`)
   - 개발 전용 Supabase 프로젝트 사용 (무료 프로젝트 수 제한 확인 필요)

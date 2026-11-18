@@ -20,7 +20,7 @@ gate:
   timeouts:
     vet: 30
     lint: 60
-    test: 120
+    test: 600
   ast_grep_gate:
     enabled: true
     # Where this project's ast-grep rules live. This is the single source of

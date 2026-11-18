@@ -14,9 +14,9 @@
 node -v
 ```
 
-`v24.22.1` 이상이 나오면 된다. 이 프로젝트가 지원하는 범위는 `^22.23.4 || ^24.22.1 || >=26.0.0`이고, Node.js 25는 지원하지 않는다. 범위를 벗어난 버전에서는 4단계 의존성 설치가 실패한다.
+`v24.22.1` 이상의 24.x가 나오면 된다. 이 프로젝트가 지원하는 범위는 `^22.23.4 || ^24.22.1`이고, Node.js 25와 26은 지원하지 않는다. 범위를 벗어난 버전에서는 4단계 의존성 설치가 실패한다. (운영 배포의 Vercel이 이 범위로 Node 버전을 고르고, Node.js 25부터는 Corepack이 빠져 pnpm 버전 고정이 보장되지 않아 26을 뺐다 — 10. 배포 참고)
 
-`winget install OpenJS.NodeJS.LTS`로 설치하면 Node.js 26이 설치될 수 있다. Node.js 26에는 Corepack이 들어 있지 않으므로, 다음 단계에서는 Corepack 대신 `npm install -g` 방식을 쓴다.
+`winget install OpenJS.NodeJS.LTS`로 설치하면 Node.js 26이 설치될 수 있다. 이 경우 설치가 거부되므로, nodejs.org에서 Node.js 24 설치 프로그램을 받아 다시 설치한다.
 
 ### 1-2. pnpm 활성화
 
@@ -26,7 +26,7 @@ node -v
 corepack enable pnpm
 ```
 
-일반 권한 창에서 실행하면 Node.js가 `Program Files` 아래에 설치되어 있어 `EPERM` 오류가 날 수 있다. 관리자 권한을 쓸 수 없거나 Corepack이 없는 경우(Node.js 26)에는 아래 명령으로 대신한다. 버전은 `package.json`의 `packageManager` 값과 같다.
+일반 권한 창에서 실행하면 Node.js가 `Program Files` 아래에 설치되어 있어 `EPERM` 오류가 날 수 있다. 관리자 권한을 쓸 수 없거나 Corepack을 쓸 수 없는 경우에는 아래 명령으로 대신한다. 버전은 `package.json`의 `packageManager` 값과 같다.
 
 ```powershell
 npm install -g pnpm@11.28.9
@@ -70,6 +70,8 @@ Copy-Item .env.example .env
 | `PAYLOAD_SECRET` | Payload가 암호화·서명에 쓰는 비밀 값 | 아래 방법으로 만든 무작위 문자열 |
 | `NEXT_PUBLIC_SERVER_URL` | 사이트 주소 | `http://localhost:3000` |
 | `E2E_PORT` | E2E 테스트 전용 포트(선택) | 비워 두면 `3100` |
+
+`.env.example` 아래쪽의 운영(Vercel) 전용 변수(`CRON_SECRET`, `DATABASE_CA_CERT`, `DATABASE_POOL_MAX`, `S3_`로 시작하는 다섯 개)는 로컬에서 비워 둔다. 쓰임새는 [10. 배포](#10-배포)에 있다.
 
 `POSTGRES_PASSWORD`와 `PAYLOAD_SECRET`에는 각각 따로 만든 무작위 문자열을 쓴다. 다음 명령을 실행할 때마다 새 값이 화면에 출력되므로, 출력된 값을 복사해 `.env`에 붙여 넣는다.
 
@@ -207,7 +209,46 @@ pnpm format
 
 ## 10. 배포
 
-운영 배포는 Vercel(함수 리전 서울 `icn1`)과 Supabase(PostgreSQL·사진 저장소)를 쓴다. 설정은 저장소의 `vercel.json`에 있다.
+운영 배포는 Vercel(함수 리전 서울 `icn1`)과 Supabase(PostgreSQL·사진 저장소)를 쓴다. 설정은 저장소의 `vercel.json`에 있다. 지금 단계의 사이트는 Vercel 로그인으로 잠근 비공개 미리보기이고, 검색 엔진에도 노출하지 않는다(`robots.txt` 전체 차단, 모든 응답에 `X-Robots-Tag: noindex, nofollow`).
+
+### 사용자가 직접 하는 단계
+
+계정·키·보호 설정은 사용자가 직접 한다. 초보자용 단계별 안내는 `.moai/specs/SPEC-DEPLOY-001/plan.md` §I에 있으며, 순서는 다음과 같다.
+
+1. Supabase(§I.1): 서울 리전 프로젝트 만들기, 트랜잭션 풀러 주소 복사, SSL 강제·인증서 받기, 비공개 `media` 버킷과 S3 키 만들기, **Data API 끄기**(첫 배포보다 먼저).
+2. Vercel(§I.2): 환경 변수 없이 저장소 가져오기(첫 빌드는 일부러 실패한다) → Deployment Protection에서 Vercel Authentication을 켜고 범위를 All Deployments로 저장 → 아래 환경 변수 입력 → Node.js 버전·함수 리전 확인 → 다시 배포.
+3. 첫 관리자 만들기(§I.3)와 확인 절차(§I.4). 예약 정리가 Vercel 보호에 막히면 아래 수동 정리(§I.5)를 한다.
+
+비밀번호·키 같은 실제 값은 Vercel의 환경 변수 화면에만 넣고, 저장소·문서·채팅에는 남기지 않는다.
+
+### 운영 환경 변수
+
+Vercel 프로젝트의 **Settings → Environment Variables**에 넣는다. 환경은 **Production만** 고르고, 비밀값은 Type을 **Secret**(예전 이름 Sensitive — 저장 뒤 다시 볼 수 없음)으로 고른다. 이름 목록은 `.env.example`과 같고, 값은 로컬 `.env`와 따로 만든다. 운영 빌드(`VERCEL_ENV=production`)는 시작 전 점검에서 필수 변수가 빠졌거나 형식이 틀리면 이름만 출력하고 멈춘다(값은 출력하지 않는다).
+
+| 변수 | 필수 | 값 |
+|---|---|---|
+| `DATABASE_URL` | 필수 | Supabase **Transaction pooler** 연결 주소(포트 `6543`). 끝에 `?sslmode=` 같은 SSL 인자를 붙이지 않는다 |
+| `PAYLOAD_SECRET` | 필수 | 로컬 `.env`와 **다른** 긴 무작위 문자열(40자 이상 권장) |
+| `NEXT_PUBLIC_SERVER_URL` | 필수 | `https://<프로젝트 이름>.vercel.app` — https 주소만, 끝의 `/`·경로 없이 |
+| `CRON_SECRET` | 필수 | 영문·숫자만 16자 이상(권장 32자). 특수 문자·띄어쓰기 없이 |
+| `DATABASE_CA_CERT` | 필수 | Supabase에서 받은 인증서 파일(PEM)의 글 전체 |
+| `DATABASE_POOL_MAX` | 선택 | DB 연결 풀 크기, 3~20 정수. 비워 두면 5 |
+| `S3_BUCKET` | 필수 | 사진 버킷 이름 `media` |
+| `S3_ENDPOINT` | 필수 | Supabase Storage S3 연결 화면의 Endpoint |
+| `S3_REGION` | 필수 | 같은 화면의 Region |
+| `S3_ACCESS_KEY_ID` | 필수 | S3 access key ID |
+| `S3_SECRET_ACCESS_KEY` | 필수 | S3 secret access key(만들 때 한 번만 보인다) |
+
+S3 변수 다섯 개를 모두 넣으면 사진이 Supabase Storage에 저장되고, 모두 비우면 로컬 `media/` 폴더를 쓴다. 일부만 넣으면 오류로 멈춘다. 사진 주소는 어느 쪽이든 `/api/media/file/…`이고, 공개 범위 규칙은 같다. Vercel의 요청 본문 한도 때문에 실제 사이트에서는 4MB 이하 사진을 올린다.
+
+### 빌드와 마이그레이션
+
+- `vercel.json`의 `buildCommand`는 `node scripts/vercel-build.mjs`다. 운영 배포에서만 시작 전 점검 → `payload migrate`(마이그레이션 적용) → `pnpm build` 순서로 실행하고, 운영이 아니면 아무것도 하지 않고 실패한다. 로컬 `pnpm build`는 마이그레이션하지 않는다.
+- `main` 가지만 자동 배포한다(`git.deploymentEnabled`). 미리보기 배포는 쓰지 않는다.
+- pnpm 버전: 환경 변수 `ENABLE_EXPERIMENTAL_COREPACK`을 값 `1`로 넣으면 Vercel이 Corepack으로 `package.json`의 `packageManager`(pnpm 11.28.9)를 쓴다. 넣지 않으면 잠금 파일 형식만 보고 pnpm 9나 10을 고를 수 있다. 빌드 로그에서 실제 pnpm 버전을 확인한다.
+- Node.js 버전: 프로젝트 설정 **Build and Deployment → Node.js Version**을 **24.x**로 둔다. Vercel 문서상 `package.json`의 `engines.node`가 프로젝트 설정보다 우선하는데, 이 저장소의 범위(`^22.23.4 || ^24.22.1`)에는 26.x가 없어 24.x(또는 22.x)만 고를 수 있다. 빌드 로그에서 실제 버전이 24.x인지 확인한다.
+- 스키마를 바꾸면 `src/migrations/`에 마이그레이션 파일을 더하고 `pnpm migrate:check`가 통과하는지 본다. 개발 DB는 지금처럼 자동 반영(push)을 쓰며, 이 동작은 로컬 DB(`localhost`·`127.0.0.1`·`::1`)에서만 켜진다.
+- 원격 DB 보호: `pnpm dev`·`pnpm test`·`pnpm e2e`·`pnpm seed`와 테스트 실행은 `DATABASE_URL`이 로컬 DB가 아니면 접속 전에 거부된다. 운영 DB에는 로컬에서 접속하지 않는다.
 
 ### 예약 정리
 

@@ -43,7 +43,9 @@ function isPayloadFamily(name: string): boolean {
 }
 
 // spec.md §2.4·plan.md §B.3: Payload ∩ Vitest 교집합. engines.node는 이 범위와 같거나 더 좁아야 한다.
-const SUPPORTED_NODE_RANGE = '^22.23.4 || ^24.22.1 || >=26.0.0'
+// SPEC-DEPLOY-001 M5: Node 26을 뺐다 — Vercel은 engines.node가 프로젝트 설정보다 우선하고(`>=22.0.0` → 최신 26.x),
+// Node 25부터 Corepack이 빠져 packageManager의 pnpm 11 고정(ENABLE_EXPERIMENTAL_COREPACK)이 문서로 보장되지 않는다
+const SUPPORTED_NODE_RANGE = '^22.23.4 || ^24.22.1'
 
 describe('AC-INFRA-002 설치 재현과 Node.js 버전 범위', () => {
   it('packageManager는 pnpm@<정확한 정식 버전> 형식이다', () => {
@@ -71,7 +73,7 @@ describe('AC-INFRA-002 설치 재현과 Node.js 버전 범위', () => {
   it.each([
     ['22.23.4', true],
     ['24.22.1', true],
-    ['26.0.0', true],
+    ['26.0.0', false],
     ['22.23.3', false],
     ['24.22.0', false],
     ['25.0.0', false],
@@ -1163,5 +1165,48 @@ describe('SPEC-DEPLOY-001 M3·M4 저장소 규칙', () => {
     expect(robots).toMatch(/disallow:\s*'\/'/)
     expect(robots).not.toMatch(/sitemap/i)
     expect(listFiles(APP_DIR).filter((file) => /\/sitemap\.(ts|tsx|js|xml)$/.test(file))).toEqual([])
+  })
+})
+
+// SPEC-DEPLOY-001 M5 — 배포 문서와 환경 변수 이름 목록(AC-DEPLOY-015). 기준은 시작 전 점검의 운영 변수 목록(PRODUCTION_ENV_NAMES)이다.
+// 앱 기본 변수 2개(로컬과 같은 이름)와 연결 풀 크기(선택)를 더한 것이 운영에 넣는 앱 변수 전체다
+async function deployEnvNames(): Promise<string[]> {
+  const { PRODUCTION_ENV_NAMES } = await import('../../src/lib/preflight')
+  expect(PRODUCTION_ENV_NAMES.length, '운영 변수 목록이 비어 있지 않아야 한다').toBeGreaterThanOrEqual(1)
+  return ['DATABASE_URL', 'PAYLOAD_SECRET', ...PRODUCTION_ENV_NAMES, 'DATABASE_POOL_MAX'].sort()
+}
+
+/** README 배포 절 표에서 `| \`NAME\` |`로 시작하는 줄의 변수 이름. */
+function readmeDeployTableNames(): string[] {
+  return [...readmeDeploySection().matchAll(/^\| `([A-Z][A-Z0-9_]*)` \|/gm)].map((match) => match[1] ?? '').sort()
+}
+
+describe('SPEC-DEPLOY-001 M5 저장소 규칙', () => {
+  it('AC-DEPLOY-015 .env.example에 운영 변수 이름이 모두 값 없이 있다', async () => {
+    const entries = readEnvExampleEntries()
+    const names = entries.map((line) => line.slice(0, line.indexOf('=')))
+
+    for (const name of await deployEnvNames()) {
+      expect(entries, `.env.example에 값 없는 ${name}= 줄이 있어야 한다`).toContain(`${name}=`)
+    }
+    expect(new Set(names).size, '.env.example의 변수 이름은 한 번씩만 나와야 한다').toBe(names.length)
+  })
+
+  it('AC-DEPLOY-015 README 배포 절의 변수 표는 운영 변수 목록과 같고 모두 .env.example에 있다', async () => {
+    const fromReadme = readmeDeployTableNames()
+    const envNames = readEnvExampleEntries().map((line) => line.slice(0, line.indexOf('=')))
+
+    expect(fromReadme.length, 'README 배포 절 표에서 변수 이름을 뽑아야 한다').toBeGreaterThanOrEqual(1)
+    expect(fromReadme).toEqual(await deployEnvNames())
+    expect(fromReadme.filter((name) => !envNames.includes(name))).toEqual([])
+  })
+
+  it('AC-DEPLOY-015 README 배포 절은 사용자 단계 안내(plan.md §I)와 빌드 설정을 가리킨다', () => {
+    const section = readmeDeploySection()
+
+    expect(section).toContain('.moai/specs/SPEC-DEPLOY-001/plan.md')
+    expect(section).toContain('§I')
+    expect(section).toContain('ENABLE_EXPERIMENTAL_COREPACK')
+    expect(section).toContain('node scripts/vercel-build.mjs')
   })
 })

@@ -8,8 +8,9 @@ import { E2E_BASE_URL, E2E_PORT } from './tests/helpers/e2e-env'
 
 // SPEC-DEPLOY-001 M2: 정리 엔드포인트 E2E용 CRON_SECRET(영문·숫자 32자). 저장소에 고정 값을 두지 않는다.
 // 이 설정 파일은 작업자 프로세스마다 다시 읽히므로, 값이 없을 때만 러너에서 한 번 만들어 process.env에 넣는다 —
-// 작업자는 러너의 환경을 물려받아 서버(webServer env)와 테스트가 같은 값을 읽는다(plan.md §B.11)
-if (process.env.CRON_SECRET === undefined) {
+// 작업자는 러너의 환경을 물려받아 서버(webServer env)와 테스트가 같은 값을 읽는다(plan.md §B.11).
+// .env.example을 복사한 .env에 값 없이 남은 CRON_SECRET 줄(빈 문자열)도 값 없음으로 본다(빈 값을 쓰면 정리 경로가 늘 401이 된다 — M5)
+if (!process.env.CRON_SECRET?.trim()) {
   process.env.CRON_SECRET = randomBytes(16).toString('hex')
 }
 
