@@ -138,7 +138,7 @@
 
 - 첫 마이그레이션: run 단계 M1에서 **저장소 플러그인을 먼저 등록한 뒤**(`s3Storage({ enabled, alwaysInsertFields: true, … })` — §B.4) `payload migrate:create initial`(DB 연결 없음)로 `src/migrations/<시각>_initial.{ts,json}`와 `index.ts`를 만든다. 플러그인 등록 전에 만들면 `media`의 플러그인 열(`prefix`, `_objectKey`)이 빠진 마이그레이션이 되어, 운영(플러그인 켜짐)에서 업로드·조회 질의가 "column does not exist"로 실패한다(plan-audit 1회차 D1). 이름과 디렉터리는 Payload 기본값(run 단계에서 실제 위치 확인).
 - 같음 확인(REQ-DEPLOY-003): 로컬 Docker PostgreSQL에 임시 데이터베이스(예: `sumbi_migration_check`)를 만들고, `DATABASE_URL`을 그 DB로 바꿔 `payload migrate`를 실행한 뒤, `information_schema`·`pg_catalog`에서 테이블·열·형식·널 허용·기본값·인덱스·외래 키·열거형 목록을 뽑아 개발 DB(push)와 비교한다. `payload_migrations` 행 내용은 비교에서 뺀다. 끝나면 임시 DB를 지운다. 이 시험은 루프백 DB만 쓴다.
-- 바뀐 점 없음 확인 — `migrate:check` 스크립트(예: `scripts/migrate-check.mjs`, `pnpm migrate:check`): `payload migrate:create … --skip-empty`는 바뀐 점이 없으면 파일 없이 0으로 끝나지만, 바뀐 점이 **있어도 새 마이그레이션 파일을 써 넣고 0으로 끝난다**(`@payloadcms/drizzle/dist/utilities/buildCreateMigration.js` 83~86 — 빈 경우에만 일찍 종료). 그래서 종료 코드로 판정하지 않는다. 스크립트는 ① 실행 전 `src/migrations/` 파일 목록을 기록 ② S3 변수 없는 환경으로 `payload migrate:create drift-check --skip-empty` 실행 ③ 가짜 S3 값 다섯 개(`test-` 접두어, 연결하지 않음 — `migrate:create`는 DB에 연결하지 않고 S3 클라이언트도 업로드 때에만 만든다)를 준 환경으로 한 번 더 실행 ④ 실행 뒤 목록과 비교해 새 파일이 있으면 그 파일(`.ts`·`.json`)을 지우고 `index.ts`를 ①에서 저장한 내용으로 되돌린 뒤 이름을 출력하고 0이 아닌 종료 코드로 끝난다. ①에서는 목록과 함께 **`index.ts`의 내용(바이트)도 저장**한다 — Payload는 새 파일을 쓸 때 `writeMigrationIndex`로 `index.ts`를 디렉터리 전체 기준으로 다시 쓰므로(§A.2), 새 파일만 지우면 `index.ts`가 지운 파일을 import한 채 남아 `pnpm typecheck`·`pnpm build`가 깨진다(plan-audit 2회차 N2). 복원은 `finally`에 두어 ②·③이 예외로 끝나도 실행되게 하고, 새 파일이 없어도 `index.ts` 내용이 달라졌으면 되돌린다. (대안: `src/migrations/`를 임시 디렉터리에 복사하고 그곳을 `migrationDir`로 써서 생성하면 추적 디렉터리에 아예 쓰지 않는다 — 설정 방법은 run 단계가 정하되, 어느 쪽이든 판정은 아래와 같다.) 품질 게이트는 이 스크립트의 종료 코드와, 실행 뒤 `git status --short src/migrations`의 빈 출력으로 판정한다(AC-DEPLOY-003). 앞으로 컬렉션을 바꾸는 SPEC은 마이그레이션도 함께 만들어야 이 검사를 통과한다(새 규칙 — `tech.md` 갱신은 sync 단계).
+- 바뀐 점 없음 확인 — `migrate:check` 스크립트(예: `scripts/migrate-check.mjs`, `pnpm migrate:check`): `payload migrate:create … --skip-empty`는 바뀐 점이 없으면 파일 없이 0으로 끝나지만, 바뀐 점이 **있어도 새 마이그레이션 파일을 써 넣고 0으로 끝난다**(`@payloadcms/drizzle/dist/utilities/buildCreateMigration.js` 82~85 — 빈 경우에만 일찍 종료). 그래서 종료 코드로 판정하지 않는다. 스크립트는 ① 실행 전 `src/migrations/` 파일 목록을 기록 ② S3 변수 없는 환경으로 `payload migrate:create drift-check --skip-empty` 실행 ③ 가짜 S3 값 다섯 개(`test-` 접두어, 연결하지 않음 — `migrate:create`는 DB에 연결하지 않고 S3 클라이언트도 업로드 때에만 만든다)를 준 환경으로 한 번 더 실행 ④ 실행 뒤 목록과 비교해 새 파일이 있으면 그 파일(`.ts`·`.json`)을 지우고 `index.ts`를 ①에서 저장한 내용으로 되돌린 뒤 이름을 출력하고 0이 아닌 종료 코드로 끝난다. ①에서는 목록과 함께 **`index.ts`의 내용(바이트)도 저장**한다 — Payload는 새 파일을 쓸 때 `writeMigrationIndex`로 `index.ts`를 디렉터리 전체 기준으로 다시 쓰므로(§A.2), 새 파일만 지우면 `index.ts`가 지운 파일을 import한 채 남아 `pnpm typecheck`·`pnpm build`가 깨진다(plan-audit 2회차 N2). 복원은 `finally`에 두어 ②·③이 예외로 끝나도 실행되게 하고, 새 파일이 없어도 `index.ts` 내용이 달라졌으면 되돌린다. (대안: `src/migrations/`를 임시 디렉터리에 복사하고 그곳을 `migrationDir`로 써서 생성하면 추적 디렉터리에 아예 쓰지 않는다 — 설정 방법은 run 단계가 정하되, 어느 쪽이든 판정은 아래와 같다.) 품질 게이트는 이 스크립트의 종료 코드와, 실행 뒤 `git status --short src/migrations`의 빈 출력으로 판정한다(AC-DEPLOY-003). 앞으로 컬렉션을 바꾸는 SPEC은 마이그레이션도 함께 만들어야 이 검사를 통과한다(새 규칙 — `tech.md` 갱신은 sync 단계).
 - 운영 적용: `vercel.json`의 `buildCommand`를 빌드 스크립트(예: `scripts/vercel-build.mjs`)로 바꾸고, 이 스크립트는 `VERCEL_ENV === 'production'`일 때만 시작 전 점검 → `payload migrate` → `pnpm build`를 차례로 실행한다. 운영이 아니면 아무 명령도 실행하지 않고 영문 문구와 함께 0이 아닌 종료 코드로 끝낸다(Preview 배포는 쓰지 않으므로 실행될 일이 없고, 실행되면 설정 실수다 — 로컬 `pnpm build`는 이 스크립트를 쓰지 않는다).
 - 마이그레이션 → 빌드 순서의 대가: 마이그레이션은 적용됐는데 그 뒤 `next build`가 실패하면, 이전 배포가 새 스키마의 DB를 계속 쓴다. 그래서 이 SPEC 이후 마이그레이션은 이전 코드와 함께 돌 수 있는 형태(열 추가·널 허용 우선, 삭제·이름 바꾸기는 두 번에 나눔)여야 한다(R6에 기록, `tech.md` 규칙 추가는 sync 단계). 첫 마이그레이션은 빈 DB에 적용되므로 이 문제가 없다. `prodMigrations`(첫 실행 때 적용)는 서버리스 첫 응답이 느려지고 여러 인스턴스가 동시에 시작할 때의 동작을 이 SPEC에서 확인하지 않으므로 쓰지 않는다.
 - 개발 DB: 지금처럼 push 모드. 마이그레이션을 적용하지 않는다(batch −1 행이 있어 `migrate`가 데이터 손실 확인을 묻는다). 원격 DB에 push가 일어나지 않게 어댑터에 `push: isLoopback`을 준다(REQ-DEPLOY-002의 두 번째 문장, Vercel에서는 `NODE_ENV=production`이라 원래도 push하지 않음 — 이중 장치).
@@ -158,7 +158,7 @@
 
 ### B.5 예약 정리와 IP 변환값 보관 고지
 
-- 경로와 위치: `GET /api/cron/cleanup`. 후보 위치는 라우트 그룹 밖의 `src/app/api/cron/cleanup/route.ts`(Next.js는 정적 경로를 모든 경로 받기보다 먼저 고르므로 `(payload)/api/[...slug]`보다 우선 — run 단계 M2의 첫 E2E로 확인: 인증 없는 요청이 Payload의 404 JSON이 아니라 이 처리기의 401이어야 함). 우선순위가 어긋나면 Payload `endpoints` 설정의 사용자 정의 엔드포인트로 옮긴다. `export const dynamic = 'force-dynamic'`, 리디렉트 없음, 끝 빗금 없음.
+- 경로와 위치: `GET /api/cron/cleanup`. 실제 위치는 `src/app/(payload)/api/cron/cleanup/route.ts`다. `src/app` 바로 아래에는 두 라우트 그룹만 둔다는 저장소 규칙(AC-INFRA-004) 때문에, 처음 후보였던 라우트 그룹 밖 경로는 쓰지 않았다. Next.js는 정적 경로를 모든 경로 받기보다 먼저 고르므로 같은 그룹의 `(payload)/api/[...slug]`보다 우선한다(M2 E2E 확인: 인증 없는 요청이 Payload의 404 JSON이 아니라 이 처리기의 401). `export const dynamic = 'force-dynamic'`, 리디렉트 없음, 끝 빗금 없음.
 - 인증: `Authorization`이 정확히 `Bearer ${CRON_SECRET}`이면 통과. 비교는 `crypto.timingSafeEqual`로 하되 길이가 다르면 같은 길이의 해시(예: 두 값의 SHA-256)를 비교해 길이 차이로 시간이 갈리지 않게 한다. `CRON_SECRET`이 없거나 16자 미만이면 항상 401.
 - 정리 규칙(예: `src/lib/scheduled-cleanup.ts`의 `runScheduledCleanup(payload, now)`):
   - 신청 시도 기록: `attemptedAt < now − 10분`인 행 삭제(기존 `recordAttempt`의 기준과 같음)
@@ -207,7 +207,7 @@
 - `vercel.json`(예시 — 정확한 키는 run 단계에서 공식 스키마로 확인):
   - `regions: ["icn1"]`, `crons: [{ path: "/api/cron/cleanup", schedule: "0 18 * * *" }]`, `buildCommand: "node scripts/vercel-build.mjs"`, Preview 배포 끄기(`git.deploymentEnabled`)
 - pnpm: 잠금 파일이 `lockfileVersion: 9.0`이라 그대로 두면 Vercel이 pnpm 9나 10을 쓸 수 있는데, 이 저장소는 pnpm 11 설정(`pnpm-workspace.yaml`의 `allowBuilds`, `engineStrict`)을 쓴다. Corepack을 켜는 환경 변수를 사용자가 넣어 `packageManager`의 `pnpm@11.28.9`를 쓰게 하고, 빌드 로그의 pnpm 버전을 확인한다(§I.2).
-- Node: `engines`가 `^22.23.4 || ^24.22.1 || >=26.0.0`. 프로젝트 설정의 Node 버전을 24.x로 두고 빌드 로그로 확인한다.
+- Node: `engines`가 `^22.23.4 || ^24.22.1`. 프로젝트 설정의 Node 버전을 24.x로 두며, 실제 배포의 함수도 Node.js 24.x로 실행된다.
 - 빌드 단계의 DB 접속: 시작 전 점검은 `build`·`start`에서 환경 변수만 확인하고 DB에 연결하지 않는다(`src/lib/preflight.ts` 139~140 — DB 연결 확인은 `dev`·`test`·`e2e`만). 빌드 머신에서 Supabase 풀러로 처음 연결하는 것은 `payload migrate`이며(풀러는 IPv4 지원), 인증서·연결 문자열 문제는 이 단계에서 드러나 배포가 실패한다.
 
 ### B.10 `pnpm audit` 처리
@@ -264,7 +264,7 @@ pnpm audit                         # 기준선(4건) 기록
 - 새 의존성은 `@payloadcms/storage-s3` 3.93.0 하나(정확한 버전). 그 밖의 직접·간접 추가는 금지. `pnpm-workspace.yaml`의 `allowBuilds`·`overrides` 변경이 필요하면 차단자 보고.
 - 유지: `occupancy.ts`·`session-availability.ts`·`catalog-order.ts`·`submit-application.ts`·`application-status.ts`·`clear-requests.ts`의 동작, `rate-limit.ts`의 동작(주석만 수정), `access.ts`의 `mediaReadAccess`, `(payload)/` 템플릿 파일, 공개 화면의 내용(로봇 메타 태그만 더함).
 - 개발 DB에 `payload migrate`를 실행하지 않는다(push 모드 유지). 임시 확인 DB만 만들고 지운다.
-- `.prettierignore`, `eslint.config.mjs` 검사 제외 목록, `.gitattributes`는 바꾸지 않는다. 생성 파일(마이그레이션, `payload-types.ts`, `importMap.js`)은 Payload 명령으로만 만든다.
+- `.prettierignore`, `eslint.config.mjs` 검사 제외 목록, `.gitattributes`는 바꾸지 않는다. **예외 하나**: Payload가 만드는 마이그레이션은 두 목록에서 제외한다(`.prettierignore`의 `src/migrations/`, `eslint.config.mjs`의 `src/migrations/**`). 허용되는 변경은 이 범위 지정 줄과 그 설명 주석뿐이므로, §E-2 마지막 명령의 출력에는 이 두 파일의 해당 변경만 나올 수 있다. 생성 파일(마이그레이션, `payload-types.ts`, `importMap.js`)은 Payload 명령으로만 만든다.
 - 검증 셸은 Windows PowerShell 5.1. 명령 인자 안에 큰따옴표를 겹쳐 쓰지 않는다.
 - 커밋은 경로를 명시해 스테이징(`git add -A` 금지). `.env`, `media/`, 검증 로그, `.vercel/`은 커밋하지 않는다. Conventional Commits, 메시지에 `SPEC-DEPLOY-001`, 마지막 줄 `🗿 MoAI`, `--no-verify` 금지.
 - **`main`에 푸시하면 1단계 이후로는 운영 배포가 일어난다**(Vercel 저장소 연결 뒤). M5 이후의 푸시는 사용자 확인을 거친다.
@@ -310,7 +310,7 @@ git diff --stat 0057e9d -- .prettierignore eslint.config.mjs .gitattributes src/
 ### M2 — 예약 정리와 동의 문구 (우선순위: High — 데이터를 지우는 동작과 법률 문구)
 
 - RED: 단위 — 기준 시각 계산(10분 경계 `now − 600000`과 그 ±1ms, 2년 경계와 2월 29일), 비밀값 비교(같음/다름/길이 다름/빈 값/`CRON_SECRET` 없음·짧음), 동의 문구에 "72시간"·"원래 IP 주소는 저장하지 않음" 포함과 "다음 신청 처리 때" 없음, 버전 해시 일치. 통합 — 경계 표식 행 삭제·보존, 다른 컬렉션 불변, 두 번째 실행 0행, 질의 수 고정. E2E — 정리 엔드포인트 401(머리글 없음·틀림)·405(`POST`)·200(맞음, JSON 키 두 개, `Cache-Control: no-store`), 인증 없는 응답이 Payload 404가 아님
-- GREEN: `src/lib/scheduled-cleanup.ts`, 비밀값 비교 함수, `src/app/api/cron/cleanup/route.ts`, `vercel.json`(Cron·리전), `consent.ts` 문구·버전, `rate-limit.ts` 주석, Playwright 설정의 시험용 `CRON_SECRET`
+- GREEN: `src/lib/scheduled-cleanup.ts`, 비밀값 비교 함수, `src/app/(payload)/api/cron/cleanup/route.ts`, `vercel.json`(Cron·리전), `consent.ts` 문구·버전, `rate-limit.ts` 주석, Playwright 설정의 시험용 `CRON_SECRET`
 - 검증: AC-DEPLOY-007, AC-DEPLOY-008, AC-DEPLOY-009, AC-DEPLOY-010
 - 관련 REQ: 007, 008, 009, 010
 
@@ -347,7 +347,7 @@ git diff --stat 0057e9d -- .prettierignore eslint.config.mjs .gitattributes src/
 
 ### 예상 생성·수정 파일
 
-- 생성: `vercel.json`, `scripts/vercel-build.mjs`, `scripts/migrate-check.mjs`(이름은 예시), `src/app/api/cron/cleanup/route.ts`, `src/app/robots.ts`, `src/lib/{scheduled-cleanup,log-redaction,storage,db-connection}.ts`(이름은 예시, 합치거나 나눌 수 있음), `src/migrations/*`(생성 파일), `tests/unit/{deploy-config,scheduled-cleanup,log-redaction}.spec.ts`, `tests/integration/{scheduled-cleanup,migrations,log-redaction,storage-config}.spec.ts`, `tests/e2e/deploy.spec.ts`(예시)
+- 생성: `vercel.json`, `scripts/vercel-build.mjs`, `scripts/migrate-check.mjs`(이름은 예시), `src/app/(payload)/api/cron/cleanup/route.ts`, `src/app/robots.ts`, `src/lib/{scheduled-cleanup,log-redaction,storage,db-connection}.ts`(이름은 예시, 합치거나 나눌 수 있음), `src/migrations/*`(생성 파일), `tests/unit/{deploy-config,scheduled-cleanup,log-redaction}.spec.ts`, `tests/integration/{scheduled-cleanup,migrations,log-redaction,storage-config}.spec.ts`, `tests/e2e/deploy.spec.ts`(예시)
 - 수정: `src/payload.config.ts`, `src/lib/preflight.ts`, `scripts/preflight.mjs`, `src/collections/Media.ts`(업로드 안내 문구 — D7/Q5), `tests/integration/setup-env.ts`·`tests/helpers/e2e-env.ts`(루프백 판정), `src/lib/seed.ts`(공통 판정 함수로 묶을 때만, 동작·문구 불변), `src/lib/consent.ts`, `src/lib/rate-limit.ts`(주석만), `next.config.ts`, `src/app/(frontend)/layout.tsx`, `playwright.config.ts`(시험용 비밀값), `.env.example`, `README.md`, `package.json`, `pnpm-lock.yaml`, `tests/unit/consent.spec.ts`, `tests/unit/repo-rules.spec.ts`
 - 생성 파일 갱신: `src/payload-types.ts`(`Media`에 플러그인 필드가 생김), `src/app/(payload)/admin/importMap.js`(M1에서 `pnpm generate:importmap`으로 재생성 — 저장소 플러그인이 `S3ClientUploadHandler` 항목을 언제나 더함, §A.2)
 
@@ -375,10 +375,11 @@ git diff --stat 0057e9d -- .prettierignore eslint.config.mjs .gitattributes src/
 | R18 | 로그 가림이 Payload 로거 밖의 `console.error` 경로를 덮지 못함 | 범위의 한계로 기록(§B.6). Hobby 로그 보관 1시간 |
 | R19 | `main`에 푸시할 때마다 운영 배포와 마이그레이션이 일어남 | §D 마지막 항목. M5 이후 푸시는 사용자 확인. 마이그레이션 실패 시 배포 거부 |
 | R20 | Vercel Cron Jobs는 "Schedules"로 옮겨질 예정인 기존 기능 | 지금은 모든 요금제에서 지원. 이전은 범위 밖, 공지가 나오면 후속 SPEC |
-| R21 | `@aws-sdk/client-s3` 최신판의 기본 체크섬 동작이 Supabase S3 호환 API와 맞지 않아 업로드가 실패할 수 있음(미확인) | 로컬에서 재현하지 않음. AC-DEPLOY-014 업로드에서 드러나면 원인 후보로 기록하고 차단자 보고(설정으로 끌 수 있는지는 그때 공식 문서로 확인) |
+| R21 | `@aws-sdk/client-s3` 최신판의 기본 체크섬 동작이 Supabase S3 호환 API와 맞지 않아 업로드가 실패할 수 있음(미확인) | 로컬에서 재현하지 않음. AC-DEPLOY-014 업로드에서 드러나면 원인 후보로 기록하고 차단자 보고(설정으로 끌 수 있는지는 그때 공식 문서로 확인). **실제 배포 결과(2026-11-23): 영문·숫자 이름(`Designer.png`, `jeju2.jpg`) 업로드 성공, 체크섬 문제 미발생.** 파일 이름 실패는 R25로 따로 다룬다 |
 | R22 | Supabase Data API가 켜져 있으면 RLS 없는 `public` 테이블(신청자 정보)이 공개 키로 읽히고 쓰임 — Vercel 보호와 무관한 경로 | 사용자가 §I.1에서 Data API를 끔(REQ-DEPLOY-013), AC-DEPLOY-014에서 공개 키 요청이 거부되는지 확인 |
 | R23 | 사용자가 M4 전에 Vercel을 저장소에 연결하면 마일스톤 푸시마다 중간 상태가 운영 배포됨 | §C에 "§I.2는 M4 푸시 뒤"를 적고 오케스트레이터가 그때 안내 |
 | R24 | 시험을 `pnpm` 스크립트 없이 직접 실행해 원격 DB에 닿음 | 시험 환경 준비 파일 두 곳의 루프백 판정(§B.8, REQ-DEPLOY-002) |
+| R25 | 운영(S3 저장소)에서 한글·공백·괄호가 든 파일 이름의 사진 업로드가 실패할 수 있음(`다운로드 (1).jpg`에서 "Something went wrong" 확인). 진단 업로드를 하지 않아 원인은 가설이며, ASCII 이름이어도 공백·괄호가 있으면 실패할 수 있고 하이픈은 운영에서 시험하지 않음 | 사용자 결정 (가)로 알려진 제한으로 받아들임(`spec.md` §2.4). 그때까지 파일 이름은 영문과 숫자로만 쓴다(§I.4 1번). 실패한 업로드가 버킷에 객체를 남기지 않았고 데이터 손실은 없음. 진단·수정은 SPEC-LAUNCH-001의 공개 전 필수 조건(`spec.md` §5) |
 
 안티 패턴(하지 말 것):
 
@@ -436,16 +437,16 @@ git diff --stat 0057e9d -- .prettierignore eslint.config.mjs .gitattributes src/
 3. 가져오기 화면의 **Environment Variables 칸은 비워 둔 채 Deploy**를 누릅니다. **첫 배포는 실패하는 것이 정상입니다**(필요한 값이 없어서 일부러 멈추게 해 두었습니다).
 4. 프로젝트 **Settings → Deployment Protection**
    - **Vercel Authentication**을 켜고, 보호 범위에서 **All Deployments**를 고른 뒤 **Save**.
-5. **Settings → Environment Variables**에서 아래 값을 하나씩 넣습니다. 각 변수의 환경 체크는 **Production만** 켜고, 가능하면 **Sensitive**로 표시합니다.
+5. **Settings → Environments → Production**에서 아래 값을 넣습니다. **Type**은 비밀값(`DATABASE_URL`, `PAYLOAD_SECRET`, `CRON_SECRET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`)은 **Secret**, 나머지는 **Config**로 둡니다. Type은 한 번에 추가하는 묶음 전체에 적용되므로 Secret 값과 Config 값은 나눠서 추가합니다.
    - `DATABASE_URL` — I.1의 4번
-   - `DATABASE_CA_CERT` — I.1의 5번 인증서 글 전체
+   - `DATABASE_CA_CERT` — I.1의 5번 인증서 글 전체(공개 인증서라 Config여도 됩니다)
    - `DATABASE_POOL_MAX` — `5`
    - `PAYLOAD_SECRET` — 새로 만든 긴 무작위 문자열(로컬 `.env`와 **다른** 값). 비밀번호 관리자의 생성 기능으로 40자 이상 영문·숫자를 만드세요
    - `NEXT_PUBLIC_SERVER_URL` — `https://<2번 이름>.vercel.app` (끝에 `/` 없이)
    - `CRON_SECRET` — 새로 만든 무작위 영문·숫자 32자(특수문자·띄어쓰기 없이)
    - `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` — I.1의 6·7번
-   - `ENABLE_EXPERIMENTAL_COREPACK` — `1` (이 저장소가 쓰는 pnpm 11을 쓰게 함 — 이름은 run 단계에서 공식 문서로 다시 확인해 알려 드립니다)
-6. **Settings → Build and Deployment → Node.js Version**: **24.x**.
+   - `ENABLE_EXPERIMENTAL_COREPACK` — `1` (이 저장소가 쓰는 pnpm 11을 쓰게 함 — 이 이름으로 동작함을 실제 배포에서 확인했습니다)
+6. **Settings → Build and Deployment → Node.js Version**: **24.x**. (저장소가 허용하는 범위는 `^22.23.4 || ^24.22.1`입니다.)
 7. **Settings → Functions → Function Region**: **Seoul, South Korea (icn1)** 인지 확인합니다(저장소의 `vercel.json`이 이미 지정하므로 보통 맞게 나옵니다). 같은 화면에 **Fluid compute** 켜짐/꺼짐 표시가 있으면 어느 쪽인지 알려 주세요(연결 수 계산에 씁니다).
 8. Claude가 이 SPEC의 코드를 `main`에 올리겠다고 확인을 구하면 승인합니다. 올라가면 자동으로 다시 배포됩니다. 이미 올라가 있다면 **Deployments → 가장 위 배포 → ⋯ → Redeploy**.
 9. 빌드 로그(**Deployments → 해당 배포 → Building**)에서 다음을 봅니다: pnpm 버전 11.28.9, 마이그레이션 적용 줄, 마지막 "Ready". 화면을 캡처하거나 보이는 줄을 그대로 알려 주세요(비밀값은 로그에 나오지 않게 되어 있습니다).
@@ -462,23 +463,23 @@ git diff --stat 0057e9d -- .prettierignore eslint.config.mjs .gitattributes src/
 각 줄에 "됨/안 됨"과 보이는 문구를 알려 주시면 Claude가 기록합니다. 확인용 데이터는 이름 앞에 `test-`를 붙이고, 끝나면 관리자 화면에서 지웁니다.
 
 0. 함수 리전 확인: **Deployments → 가장 위 배포 → Functions(또는 Resources)** 에 보이는 함수 리전이 `icn1`인지 봅니다. 찾기 어려우면 Vercel에 로그인한 브라우저의 개발자 도구(F12) → Network → `/api/tours` 요청 → 응답 머리글 `x-vercel-id` 값을 알려 주세요. 값은 `icn1::xxx1::요청번호` 모양이며, **맨 끝 요청번호 바로 앞 칸**이 `icn1`이어야 합니다(맨 앞 칸은 요청을 받은 가까운 곳이라 서울에서는 늘 `icn1`이 나와 판정에 쓰지 않습니다).
-1. 관리자 화면에서 사진 2장을 올립니다: `test-공개.jpg`(4MB 이하), `test-숨김.jpg`. 업로드 화면에 "실제 사이트에서는 4MB 이하" 안내가 보이는지도 봅니다.
-2. 투어 `test-확인투어`를 만들어 대표 이미지로 `test-공개.jpg`를 고르고 **공개**로 저장, 다가오는 회차 하나(정원 2) 추가.
+1. 관리자 화면에서 사진 2장을 올립니다: `testpublic.jpg`(4MB 이하), `testhidden.jpg`. 업로드 화면에 "실제 사이트에서는 4MB 이하" 안내가 보이는지도 봅니다. **파일 이름은 영문과 숫자로만 씁니다.** 한글·공백·괄호가 든 이름은 업로드가 실패할 수 있고 하이픈은 아직 시험하지 않았으므로, 이 제한(F1, `spec.md` §2.4)이 풀릴 때까지는 위의 `test-` 규칙도 사진 파일 이름에는 적용하지 않습니다. 아래 3번의 `test-숨김.jpg`는 여기서 올린 `testhidden.jpg`를 뜻합니다.
+2. 투어 `test-확인투어`를 만들어 대표 이미지로 `testpublic.jpg`를 고르고 **공개**로 저장, 다가오는 회차 하나(정원 2) 추가.
 3. 먼저 관리자 화면에서 `test-숨김.jpg`의 파일 주소를 복사해 둡니다(미디어 상세 화면). 그다음 **관리자 화면에서만 로그아웃**합니다(Vercel 로그인은 그대로 둡니다 — 그래야 "관리자가 아닌 방문자"로 사이트를 볼 수 있습니다). 이 상태에서 `/tours`에 투어와 사진이 보이는지, 복사해 둔 `test-숨김.jpg` 주소를 열면 사진 대신 오류가 나오는지 확인합니다.
    - 이어서 관리자로 다시 로그인해 **홈 화면 설정**의 대표 사진을 `test-숨김.jpg`로 저장 → 관리자 로그아웃 상태에서 홈에 그 사진이 보이고 복사해 둔 주소도 열리는지 확인 → 다시 관리자로 대표 사진을 비우고 저장 → 로그아웃 상태에서 그 주소가 다시 오류인지 확인합니다.
 4. 그 투어 회차로 신청을 1건 합니다(이메일은 본인 이메일, 이름 `test-신청자`). 접수 완료 화면이 나오면 됨. (자동 정리 확인에 쓰는 신청은 이것이 아니라 7번 다음에 따로 합니다 — 8번)
 5. 관리자 화면에서 그 신청을 **확정**으로 바꿉니다. 저장되면 됨.
 6. 그 회차의 참가자 CSV 내려받기를 한 번 합니다. 파일이 받아지면 됨.
-7. **Settings → Cron Jobs**(또는 **Schedules → Cron Jobs**)에서 `/api/cron/cleanup` 작업의 **Run**을 누르고, **View Logs**에서 응답 상태를 확인합니다(Hobby는 로그가 1시간만 남으니 바로 봐 주세요). 200이면 됨. 200이 아니면(예: 401·로그인 화면) "막힘"으로 알려 주시고 8번 대신 §I.5 수동 정리를 합니다.
+7. **Schedules → Cron Jobs**에서 `/api/cron/cleanup` 작업의 **Run**을 누르고, **View Logs**에서 응답 상태를 확인합니다(Hobby는 로그가 1시간만 남으니 바로 봐 주세요). 명령줄(CLI) 실행은 이 화면을 쓸 수 없을 때의 대안입니다. 200이면 됨. 200이 아니면(예: 401·로그인 화면) "막힘"으로 알려 주시고 8번 대신 §I.5 수동 정리를 합니다.
 8. 자동 정리 확인(7번이 200일 때만 — 200이 아니면 이 번호 전체를 건너뛰고 §I.5로 갑니다). 순서가 중요합니다(plan-audit 2회차 N1):
    - **8-가. 확인용 신청(증거)**: 7번의 200 응답을 **확인한 뒤에**, 같은 회차로 신청을 1건 더 합니다(이름 `test-정리확인`, 이메일은 4번과 다른 본인 이메일 주소). 접수 완료 화면이 나오면 **그 시각을 적어 둡니다**. 접수가 되지 않으면 화면 문구를 알려 주세요.
    - **8-나. 기다리기**: 8-가 뒤로 **26시간 이상**, 이 사이트에서 **다른 신청을 하지 않고, Cron Jobs의 Run을 다시 누르지 않고, §I.5 수동 정리 SQL도 실행하지 않습니다.** (신청이 들어오면 그때마다 오래된 기록이 지워지고, Run이나 수동 정리도 기록을 지우므로, 그중 하나라도 하면 새벽 자동 정리가 돌았는지 알 수 없게 됩니다.)
-   - **8-다. 확인**: 8-가 시각에서 26시간 이상 지난 뒤, Supabase 왼쪽 **SQL Editor**에서 아래 한 줄을 실행하고 나온 숫자를 알려 주세요. `0`이면 새벽 자동 정리가 돈 것이고, `1` 이상이면 자동 정리가 막힌 것이라 §I.5 수동 정리를 합니다.
+   - **8-다. 확인**: 8-가 시각에서 26시간 이상 지난 뒤, Supabase 왼쪽 **SQL Editor**에서 아래 한 줄을 실행하고 나온 숫자를 알려 주세요. `0`이면 새벽 자동 정리가 돈 것이고, `1` 이상이면 자동 정리가 막힌 것이라 §I.5 수동 정리를 합니다. 26시간보다 훨씬 늦게 확인해도 그동안 다른 신청·Run·수동 정리가 없었다면 결과는 유효합니다. 다만 이 확인은 기록이 지워졌는지만 보여 줄 뿐, **언제 지워졌는지와 72시간 안에 지워졌는지는 측정하지 못합니다.**
    ```sql
    select count(*) from application_attempts where attempted_at < now() - interval '26 hours';
    ```
    (왜 이 순서인가: 7번의 수동 Run도 10분 지난 기록을 지우므로, 4번 신청 기록으로 확인하면 Run이 그 기록을 지워 자동 정리가 한 번도 돌지 않아도 `0`이 나올 수 있습니다. 8-가 기록은 Run 뒤에 생겼고 그 뒤로 기록을 지우는 다른 일이 없으므로, 26시간 시점에 사라졌다면 새벽 자동 정리만이 지운 것입니다. 표·칸 이름은 Claude가 M2에서 실제 이름을 확인해 다르면 고쳐 드립니다. 이 명령은 숫자 하나만 보여 주고 아무것도 바꾸지 않습니다.)
-9. Supabase Data API 차단 확인: Supabase **Project Settings → API Keys**에서 **공개 키**(publishable 또는 anon 키 — `secret`·`service_role` 키는 쓰지 않습니다)를 복사해, 본인 PC의 PowerShell에서 아래를 실행합니다. 결과가 오류(빨간 글씨, 상태 코드 4xx)면 됨이고, 표 내용(JSON)이 나오면 바로 알려 주세요. 키 값은 채팅에 붙이지 말고 상태 코드만 알려 주세요.
+9. Supabase Data API 차단 확인: Supabase **Project Settings → API Keys**에서 **공개 키**(publishable 또는 anon 키 — `secret`·`service_role` 키는 쓰지 않습니다)를 복사해, 본인 PC의 PowerShell에서 아래를 실행합니다. **오류 상태 코드(4xx 또는 503)에 표 내용이 없고, 대시보드의 Enable Data API(§I.1의 8번 화면)가 꺼져 있는 것까지 확인되어야** 됨입니다. 표 내용(JSON)이 나오면 바로 알려 주세요. 키 값은 채팅에 붙이지 말고 상태 코드와 오류 코드만 알려 주세요. 주의: `PGRST002`(503)는 Data API가 꺼졌을 때만 나오는 응답이 아니라, 스키마 캐시를 만들 때 데이터베이스에 연결하지 못했다는 뜻입니다. 이 응답만으로 꺼졌다고 판단하지 말고 토글을 함께 확인합니다.
    ```powershell
    Invoke-WebRequest -Uri 'https://<영문숫자>.supabase.co/rest/v1/applications?select=id&limit=1' -Headers @{ apikey = '<공개 키>' }
    ```

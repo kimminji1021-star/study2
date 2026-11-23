@@ -1,10 +1,10 @@
 ---
 id: SPEC-DEPLOY-001
 title: "배포 기반(1단계) — Vercel·Supabase 비공개 미리보기 배포, 마이그레이션, 업로드 저장소, 예약 정리, 운영 설정 점검"
-version: "0.1.2"
+version: "0.1.3"
 status: in-progress
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-23
 author: study2
 priority: P1
 phase: "v0.6.0 target"
@@ -24,6 +24,7 @@ depends_on: [SPEC-INFRA-001, SPEC-TOUR-001, SPEC-APPLY-001, SPEC-ADMIN-001, SPEC
 | 0.1.0 | 2026-11-17 | study2 (manager-spec) | 최초 작성 — `product.md` §7 로드맵 8번 "배포"의 1단계 "배포 기반". 2026-11-17 사용자 결정 6가지(`interview.md`)와 앞선 SPEC들의 배포 이월 항목(`plan.md` §A.3 처리 표) 반영. 공개 출시(처리방침 페이지·운영자 정보·바닥글 링크·검색 허용)는 2단계 SPEC(예: SPEC-LAUNCH-001)이 맡는다 |
 | 0.1.1 | 2026-11-17 | study2 (manager-spec) | plan-audit 1회차(FAIL 0.69, `.moai/reports/plan-audit/SPEC-DEPLOY-001-review-1.md`) 반영. 필수 D1~D10: 저장소 플러그인을 항상 등록하고 `enabled`로 켜고 끄며 `alwaysInsertFields: true`로 두 환경의 스키마를 같게 함(첫 마이그레이션도 이 설정으로), AC-DEPLOY-015 비밀값 검사 명령을 `[^[:space:]]`·실제 비밀값 모양 기준으로 다시 쓰고 HEAD `0057e9d`에서 빈 출력 실측, 풀 최소 3(Payload가 연결 1개 상시 점유)과 연결 예산 재계산·최소값 동시 신청 시험, 원격 DB인데 인증서가 없으면 연결 거부, Supabase Data API 끄기 단계와 확인 줄, 사용자 답 Q5(업로드 칸 "4MB 이하" 안내)·Q6(미리보기 동안 수동 정리) 반영과 수동 정리 SQL, 다음 날 Cron 확인을 DB 확인으로, 리전 판정을 함수 리전·`x-vercel-id` 마지막 리전 칸으로, `migrate:check`가 새 파일을 지우고 실패하도록, 시험 설정 파일(`setup-env.ts`·`e2e-env.ts`)에도 루프백 판정. 선택 D11~D20 중 확인된 사실 오류·모호성 반영. REQ 16개·AC 16개 유지(새 항목은 기존 REQ·AC에 합침) |
 | 0.1.2 | 2026-11-17 | study2 (manager-spec) | plan-audit 2회차(FAIL 0.84, `.moai/reports/plan-audit/SPEC-DEPLOY-001-review-2.md`) 반영. 필수 N1: 다음 날 자동 정리 확인의 증거 행을 Cron 수동 실행 **뒤에** 만드는 별도 확인 신청으로 바꿈(수동 실행이 증거 행을 지워 거짓 통과가 나던 순서 결함 — REQ-014 (가), `plan.md` §I.4 8번). 필수 N2: `migrate:check`가 새 파일을 지울 때 Payload가 다시 쓴 `src/migrations/index.ts`도 원래 내용으로 되돌리고, 실행 뒤 `git status --short src/migrations` 빈 출력을 판정에 더함(REQ-003). 선택 N3~N7 모두 반영: 시험 환경 파일의 판정 시점을 확인 가능한 문장으로, 수동 정리 SQL을 두 행 수를 한 번에 돌려주는 한 문장으로(2월 29일 하루 차이 기록), README SQL의 표·칸 이름을 정리 구현과 비교, M1에서 `pnpm generate:importmap` 확정, `interview.md`의 낡은 세 행에 대체 표시. REQ 16개·AC 16개 유지 |
+| 0.1.3 | 2026-11-23 | study2 (manager-spec) | sync 감사 반영: 한글 파일 이름 업로드 알려진 제한, 사용자 결정 (가). §2.4에 제한 문구를 더하고, §5에 파일 이름 업로드 진단·수정과 Data API 두 번째 방어선을 SPEC-LAUNCH-001의 공개 전 필수 조건으로 더함. `plan.md`의 사용자 안내와 경로·버전 표기를 실제 배포 결과에 맞춤. REQ 16개·AC 16개 유지, `acceptance.md`는 바꾸지 않음 |
 
 ## 1. 개요
 
@@ -79,6 +80,7 @@ Tier는 M으로 정한다(근거와 분할 기준은 `plan.md` §A.4).
 - **A4. Supabase 무료 프로젝트 일시 중지**: 7일 동안 활동이 적으면 무료 프로젝트가 일시 중지될 수 있다. 매일 실행되는 정리 작업이 DB에 질의하지만 이것이 "활동"으로 충분한지는 공식 문서가 정하지 않는다. 중지되면 대시보드에서 다시 켤 수 있다.
 - **A5. 비밀값**: 모든 비밀값은 사용자가 Vercel 환경 변수에 직접 넣는다. Claude는 값을 보거나 입력하지 않으며, 저장소에는 이름만 남긴다(`.env.example`, `plan.md` §I).
 - **A6. 관리자 계정**: 운영 DB의 첫 관리자는 사용자가 배포된 관리자 화면에서 직접 만든다. 테스트는 개발 DB에서만 돌고 `@example.test` 계정만 쓴다.
+- **알려진 제한 — 사진 파일 이름 (sync 감사 F1, 사용자 결정 (가), 2026-11-23)**: 운영(S3 저장소)에서 한글·공백·괄호가 든 파일 이름의 사진 업로드는 실패할 수 있다(`다운로드 (1).jpg`에서 "Something went wrong" 확인, 원인 미확정). SPEC-LAUNCH-001에서 진단·수정할 때까지 파일 이름을 영문과 숫자로만 바꿔 올린다(예: `jeju2.jpg`).
 
 ### 2.5 용어
 
@@ -154,6 +156,8 @@ Tier는 M으로 정한다(근거와 분할 기준은 `plan.md` §A.4).
 - 바뀐 동의 문구 전체와 2년·72시간 보관 기간의 변호사 최종 확인, 민감정보 발견 시 즉시 삭제 운영 절차 문서화, 시행 예정 개정 법률 확인
 - 상업 운영을 위한 Vercel 요금제(Hobby는 비상업 용도 한정)와 Supabase 요금제(무료 프로젝트 일시 중지) 결정
 - 운영 대표 사진·투어 사진의 실제 업로드와 크기 확인, 파비콘
+- **공개 전 필수 — 파일 이름 업로드 진단·수정(F1)**: `다운로드.jpg`, `download (1).jpg`를 각각 올려 Vercel 로그의 오류 이름으로 원인을 확인한 뒤 고치고, 한글·공백·괄호 이름의 업로드 시험을 포함한다(§2.4 알려진 제한)
+- **공개 전 필수 — Data API 두 번째 방어선**: `public` 표의 RLS를 켜거나 `anon`·`authenticated` 권한을 회수한다. Payload 연결 역할이 영향받지 않는지 확인한 뒤 공개 키 요청을 다시 시험한다. 지금은 Data API 끄기가 유일한 방어선이고, 확인 때 받은 `PGRST002` 응답의 차단 원인은 확정되지 않았다
 
 ### Out of Scope — 나중으로 미루는 것
 
