@@ -686,7 +686,7 @@ sync_handoff:
 ```yaml
 sync_status: complete
 sync_complete_at: 2026-11-24
-sync_commit_sha: pending-backfill   # sync 커밋(후속 chore 커밋에서 기록)
+sync_commit_sha: 8cb8cc4
 plan_correction_commit: 8749ecb   # manager-spec — 실제 배포 결과로 계획 안내 보정
 sync_evidence_head: edc4e43   # 재감사 기준. 8749ecb는 plan.md·spec.md만 변경
 frontmatter_status_transitions:
