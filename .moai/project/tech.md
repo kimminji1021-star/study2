@@ -109,4 +109,9 @@
 
 - `NEXT_PUBLIC_SERVER_URL`이 비어 있으면 CSRF 허용 목록이 비게 됩니다. 운영에서는 이 값을 필수로 하거나 `csrf`를 명시적으로 설정해야 합니다.
 - 남은 `pnpm audit` 권고 5건(happy-dom high 2건, esbuild·minimatch moderate, deepmerge low) 재평가
-- 개발 모드 스키마 푸시 대신 마이그레이션으로 전환, 개발 DB에 남은 `payload_migrations` 행 정리
+- 운영 스키마는 마이그레이션으로 전환했습니다(SPEC-DEPLOY-001, 첫 파일 `src/migrations/20261117_083422_initial.ts`). 개발 DB는 루프백 주소에서만 켜지는 스키마 푸시를 계속 쓰므로, `payload_migrations`의 개발용 행(batch −1)은 정상 표시이며 정리하지 않습니다.
+
+### 8.2 마이그레이션 규칙 (SPEC-DEPLOY-001)
+
+- 컬렉션을 바꾸면 마이그레이션을 함께 만들고 `pnpm migrate:check`를 통과시킵니다.
+- 마이그레이션은 이전 코드와 함께 돌 수 있는 형태로 만듭니다. 열 추가와 널 허용을 우선하고, 삭제와 이름 바꾸기는 두 번에 나눕니다. 운영 빌드는 마이그레이션을 먼저 적용하므로, 그 뒤 빌드가 실패하면 이전 배포가 새 스키마의 DB를 계속 쓰기 때문입니다.

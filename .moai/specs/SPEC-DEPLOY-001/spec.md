@@ -2,9 +2,9 @@
 id: SPEC-DEPLOY-001
 title: "배포 기반(1단계) — Vercel·Supabase 비공개 미리보기 배포, 마이그레이션, 업로드 저장소, 예약 정리, 운영 설정 점검"
 version: "0.1.3"
-status: in-progress
+status: completed
 created: 2026-11-17
-updated: 2026-11-23
+updated: 2026-11-24
 author: study2
 priority: P1
 phase: "v0.6.0 target"

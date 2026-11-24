@@ -6,6 +6,16 @@
 
 ### 추가됨
 
+- **SPEC-DEPLOY-001 배포 기반 1단계** (수용 기준 16개 모두 통과, AC-DEPLOY-014는 알려진 제한 1건 포함, sync 재감사 PASS 가중 88.9 / 조화 평균 89.4)
+  - Vercel(서울 `icn1`)과 Supabase로 비공개 미리보기 배포. Vercel 로그인으로 모든 배포를 잠그고 검색 엔진 노출을 막음 (`vercel.json`, `src/app/robots.ts`)
+  - 운영 빌드는 시작 전 점검 → 마이그레이션 → 빌드 순서로 실행하고, 스키마 누락은 `pnpm migrate:check`로 검사 (`scripts/vercel-build.mjs`, `scripts/preflight.mjs`, `scripts/migrate-check.mjs`, `src/migrations/20261117_083422_initial.ts`)
+  - 운영 사진을 Supabase Storage(S3 호환)에 저장하고 기존 공개 범위 규칙을 유지. 관리자 업로드 화면에 4MB 이하 안내 추가 (`src/payload.config.ts`, `src/collections/Media.ts`)
+  - 매일 한 번 만료된 신청 시도와 2년 지난 작업 기록을 지우는 예약 정리 추가, 동의 문구의 보관 설명 갱신 (`src/app/(payload)/api/cron/cleanup/route.ts`, `src/lib/scheduled-cleanup.ts`)
+  - DB 오류 로그에서 입력값을 가림 (`src/lib/log-redaction.ts`)
+  - 테스트: Vitest 815건(`src/lib` 라인 커버리지 99.33%), Playwright E2E 101건
+  - **알려진 제한**: 운영(S3 저장소)에서 한글·공백·괄호가 든 파일 이름의 사진 업로드는 실패할 수 있다(`다운로드 (1).jpg`에서 "Something went wrong" 확인, 원인 미확정). SPEC-LAUNCH-001에서 진단·수정할 때까지 파일 이름을 영문과 숫자로만 바꿔 올린다(예: `jeju2.jpg`).
+  - 공개 전 남은 항목(SPEC-LAUNCH-001): 위 제한 수정, Data API 두 번째 방어선, 72시간 보관 실제 확인, 운영 확인 데이터 정리, 연결 예산 재검토, 처리방침·법률 확인, 요금제 결정
+
 - **SPEC-LANDING-001 랜딩 페이지** (수용 기준 16개 중 자동화 부분 전부 충족 — AC-LANDING-002·013 관리자 화면·디자인 수동 확인은 사람 확인 대기, sync 감사 PASS 93.7)
   - 홈 화면 `/`이 임시 홈을 대체 (`src/app/(frontend)/page.tsx`, `src/lib/home-page.ts`): 히어로는 관리자가 올린 대표 사진 위에 0.65 불투명도 덮개를 깔고, 사진이 없으면 어두운 배경으로 대체. 흰색 알약형 CTA 버튼 (`src/components/HomeHero.tsx`)
   - 관리자 "홈 화면 설정" 전역 설정에서 큰 제목·소개 문구·대표 사진을 편집하고, 비워 두면 기본 문구를 사용 (`src/globals/HomeSettings.ts`). 익명은 읽기만 가능하고 수정은 관리자만 가능

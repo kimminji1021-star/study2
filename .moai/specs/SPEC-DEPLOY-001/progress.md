@@ -584,30 +584,91 @@ $ CRON_SECRET= pnpm exec playwright test tests/e2e/deploy.spec.ts
 
 **Gaps(M6)**: ① 실제 배포 확인 중 위 대기 항목은 관찰되지 않았다 — AC-DEPLOY-013·014는 PASS로 적지 않는다. ② 실제 배포 결과는 모두 사용자 보고이며 Claude가 화면·로그를 직접 보지 않았다. ③ 3번째 배포의 빌드 경고 1건 내용 미확인. ④ 커버리지·테스트 수는 이 작업 트리의 로컬 Windows 실행 결과이며 CI는 이 SPEC 범위 밖. ⑤ `pnpm audit` 판단(실행 경로 미도달)은 도달 경로 목록에 근거한 판단이며 각 권고의 실제 악용 가능성은 시험하지 않았다.
 
+### Sync 단계 — 실제 배포 확인 결과 (2026-11-23)
+
+재감사(`.moai/reports/sync-audit/SPEC-DEPLOY-001-sync-audit.md`, 추적하지 않는 파일) 기록 목록을 옮겼다. 따로 표시하지 않은 항목은 사용자가 화면에서 보고 전한 내용이며, manager-docs는 운영 환경에 접속하지 않았다. 비밀값은 받지도 적지도 않았다.
+
+**§I.4 확인 절차**
+
+| §I.4 | 결과 | 상태 |
+|---|---|---|
+| 0 | 배포 `Ba7X194CF`의 Resources 탭에서 함수 리전 ICN1, Node.js 24.x | 확인됨(L5) |
+| 1 | `Designer.png`, `jeju2.jpg` 업로드 성공. `media` 버킷 목록에 정확히 이 두 파일. 업로드 안내 문구 표시 | 확인됨(L7), F1 제한 있음 |
+| 3 | 숨김 확인 파일은 `jeju2.jpg`(대체 텍스트 test-숨김). 관리자 상태에서 열림 → 로그아웃 뒤 오류 → 홈 대표 사진으로 지정하면 공개 → 대표 사진을 JEJU로 교체한 뒤 다시 오류 | 확인됨(L8) |
+| 8 | 경로 (가) 통과. 수동 Run 200(2026-11-18 17:33 KST), 증거 신청 약 2026-11-18 17:42 KST, 2026-11-23 19:5x KST에 `count = 0`. 그 사이 다른 신청·Run·수동 SQL 없음(사용자 확인) | 통과(L11). **삭제 시점과 72시간 준수는 입증하지 못함** |
+| 9 | 대시보드 Enable Data API 꺼짐(사용자 관찰). 공개 키 요청 응답은 아래 원문이고 행 없음. SQL Editor는 몇 분 전 정상 | AC 줄 통과(L10). **차단 원인은 미확정** |
+
+§I.4 3의 계획과 다른 점: 계획은 대표 사진을 "비우기"였으나 JEJU 사진으로 "교체"해 확인했다. 허용 목록이 "공개 투어 이미지 + 현재 대표 사진"이므로 효과는 같고, 비우는 경우는 통합 시험이 덮는다. 사용자가 입력한 정확한 주소는 기록되지 않았다(Gap).
+
+§I.4 9 응답 원문:
+
+```
+{"code":"PGRST002","details":null,"hint":null,"message":"Could not query the database for the schema cache. Retrying."} status=503
+```
+
+`PGRST002`는 Data API가 꺼졌을 때만 나오는 응답이 아니다. "지금 막혀 있다"는 확인됐지만 "토글 때문에 계속 막힌다"는 확인되지 않았다.
+
+**AC-DEPLOY-013 (L2·L3·L4)**
+
+- 오케스트레이터 관찰(2026-11-23, 로그아웃 `curl`): `/`, `/tours`, `/admin`, `/api/tours`, `/robots.txt`, `/api/cron/cleanup` 모두 302 → `vercel.com/sso-api`, 사이트 내용 없음.
+- 사용자 관찰: 로그인 브라우저에서 `/tours`, `/api/tours`, `/robots.txt` 정상. 보호 설정은 Vercel Authentication, All Deployments.
+
+**L1 빌드 로그 (`e8ebe29`의 Redeploy)**
+
+```
+[vercel-build] preflight: node scripts/preflight.mjs build
+[vercel-build] migrate: pnpm exec payload migrate
+Reading migration files from /vercel/path0/src/migrations
+Migrating: 20261117_083422_initial
+Migrated: 20261117_083422_initial (633ms)
+WARN (payload): No email adapter provided. Email will be written to console.
+```
+
+pnpm v11.28.9, Next.js 16.4.5. 경고 1건은 위 `No email adapter provided`이고 이미 알려진 항목이다(`plan.md` §A.3 25번).
+
+**L12 연결 예산**: Fluid compute 켜짐. 풀러 클라이언트 200 ÷ 풀 5 = 동시 인스턴스 최대 40개, 인스턴스당 실사용 연결 4개, 넘치면 대기. `DATABASE_POOL_MAX`를 5로 전제한 계산이며 실제 값은 관찰하지 않았다(값이 없을 때의 코드 기본값도 5).
+
+**F1 알려진 제한 (AC-DEPLOY-014, 사용자 결정 (가))**
+
+> 운영(S3 저장소)에서 한글·공백·괄호가 든 파일 이름의 사진 업로드는 실패할 수 있다(`다운로드 (1).jpg`에서 "Something went wrong" 확인, 원인 미확정). SPEC-LAUNCH-001에서 진단·수정할 때까지 파일 이름을 영문과 숫자로만 바꿔 올린다(예: `jeju2.jpg`).
+
+AC-014 조항대로 실패를 차단자로 보고했고, 사용자가 (가)를 골라 이 제한을 받아들이고 SPEC-LAUNCH-001로 넘겼다. 진단 업로드는 하지 않았으므로 원인은 가설이다. REQ-DEPLOY-006은 한글 파일 이름에 대해 아직 충족되지 않았다. 우회 방법은 영문과 숫자만 쓰는 것이다.
+
+**그 밖의 결과**
+
+| 항목 | 결과 |
+|---|---|
+| R1 | 해소 — Cron이 Vercel 보호에 막히지 않음(수동 Run 200) |
+| R21 | 미발생 — 영문·숫자 이름 업로드 성공, 체크섬 문제 없음 |
+| `pnpm audit` (2026-11-23 재측정) | `moderate 2 / high 2`. M6의 `high 3`에서 picomatch가 결과에서 사라짐(잠금 파일 변경 없음) |
+| F12 | Supabase 버킷 목록에서 `media`에 Public 표시 없음, 정책 0개(사용자 스크린숏 2026-11-23) |
+| L0 | **미완료·이월** — 다른 가지 푸시에 배포가 생기지 않는지 관찰하지 않음 |
+| L13 | **미완료·이월** — 운영 확인 데이터 미정리(본인 이메일이 든 신청 포함, `test-` 접두어 없음) |
+
+**AC 최종 상태**: AC-DEPLOY-013 PASS, AC-DEPLOY-014 PASS(알려진 제한 1건). AC 16개 모두 통과.
+
 ## §E.3 Run-phase Audit-Ready Signal
 
 ```yaml
-run_status: audit-ready-except-pending-live   # 로컬 게이트·AC-001~012·015·016 통과. 실제 배포 대기 항목(아래)은 sync 단계가 결과를 받아 기록
+run_status: audit-ready   # 실제 배포 대기 항목은 sync 단계에서 결과 기록. AC-DEPLOY-014는 알려진 제한 1건 포함
 run_complete_at: 2026-11-18
-run_commit_sha: pending-backfill-m6   # M6 커밋은 자기 SHA를 알 수 없음 — 다음 커밋에서 채움. 로컬 게이트 기준 HEAD는 e8ebe29
-run_commits: [1dfe7dd, b3976bb, becc1a4, e8ebe29, pending-backfill-m6]
+run_commit_sha: edc4e43   # M6 커밋. 로컬 게이트 기준 HEAD는 e8ebe29(그 뒤 변경은 progress.md뿐)
+run_commits: [1dfe7dd, b3976bb, becc1a4, e8ebe29, edc4e43]
 m1_to_mN_commit_strategy: "마일스톤별 커밋 (M1, M2, M3·M4 묶음, M5, M6) — main 직접, Route A"
-ac_pass_count: 14   # AC-DEPLOY-001~012, 015, 016
+ac_pass_count: 16   # AC-DEPLOY-001~016. AC-DEPLOY-014는 알려진 제한 1건(F1) 포함
 ac_fail_count: 0
-ac_pending_live: [AC-DEPLOY-013, AC-DEPLOY-014]   # 부분 확인(사용자 관찰) — §E.2 "M5(실제 배포 확인)"
-pending_live_checks:
-  - "§I.4 0 — 함수 리전 icn1"
-  - "§I.4 3 — 쓰이지 않은 사진 주소 오류·홈 대표 사진 공개 범위"
-  - "§I.4 8 — 26시간 자동 정리(8-가 신청 진행 중, 26시간 뒤 count = 0 확인)"
-  - "§I.4 9 — Supabase Data API 차단"
-  - "L0 main 외 가지 배포 없음, L1 빌드 로그 Node·마이그레이션 줄·빌드 경고, L2 경로별 상태 코드, L12 Fluid compute, L13 확인 데이터 정리"
-cron_protection_result: "수동 실행 200 — Vercel 보호에 막히지 않음 (예약 실행 동작은 §I.4 8 대기)"
+ac_pending_live: []
+pending_live_checks:   # 미관찰 항목 — PASS 아님, SPEC-LAUNCH-001로 이월
+  - "L0 — main 외 가지 푸시에 배포가 없는지"
+  - "L13 — 운영 확인 데이터 정리"
+cron_protection_result: "수동 실행 200 — Vercel 보호에 막히지 않음. 예약 실행은 5일 안에 최소 한 번 돈 것까지 확인(§I.4 8), 삭제 시점·72시간 준수는 미입증"
 preserve_list_post_run_count: 2   # .prettierignore·eslint.config.mjs 각 +2줄(M2 범위 지정 예외), 그 밖 보존 파일 변경 0
 new_warnings_or_lints_introduced: 0
 quality_gate_head: e8ebe29
 coverage_src_lib_lines: "99.33% (745/750)"
 tests: {unit_integration: 815, e2e: 101}
-audit: {moderate: 2, high: 3, critical: 0, runtime_reachable_high: 0}
+audit: {moderate: 2, high: 3, critical: 0, runtime_reachable_high: 0}   # M6 측정값
+audit_remeasured_2026_11_23: {moderate: 2, high: 2}   # picomatch가 결과에서 사라짐, 잠금 파일 변경 없음
 cross_platform_build:
   local_windows: "pnpm build 종료 0 (e8ebe29)"
   vercel_linux: "사용자 보고 — 배포 Ba7X194CF READY(1m53s)"
@@ -622,7 +683,59 @@ sync_handoff:
 
 ## §E.4 Sync-phase Audit-Ready Signal
 
-_<pending sync-phase>_
+```yaml
+sync_status: complete
+sync_complete_at: 2026-11-24
+sync_commit_sha: pending-backfill   # sync 커밋(후속 chore 커밋에서 기록)
+plan_correction_commit: 8749ecb   # manager-spec — 실제 배포 결과로 계획 안내 보정
+sync_evidence_head: edc4e43   # 재감사 기준. 8749ecb는 plan.md·spec.md만 변경
+frontmatter_status_transitions:
+  spec_md: "in-progress → implemented → completed (3-phase close, sync 커밋에 합침), updated 2026-11-24"
+  spec_compact_md: "status 줄 completed로 맞춤"
+  plan_md_acceptance_md: "frontmatter 없음 — 변경 없음"
+sync_audit:
+  verdict: PASS
+  known_limitations: 1   # AC-DEPLOY-014 F1
+  weighted: 88.9
+  harmonic: 89.4
+  dimensions: {functionality: 88, security: 85, craft: 93, consistency: 92}
+  ac_result: "16/16 통과 (AC-DEPLOY-014는 알려진 제한 1건 포함)"
+  cross_model: "codex·GLM 사용 불가 — Claude 단독 판정"
+  report: .moai/reports/sync-audit/SPEC-DEPLOY-001-sync-audit.md   # 추적하지 않는 파일
+known_limitation_f1: "운영(S3 저장소)에서 한글·공백·괄호가 든 파일 이름의 사진 업로드는 실패할 수 있다(`다운로드 (1).jpg`에서 \"Something went wrong\" 확인, 원인 미확정). SPEC-LAUNCH-001에서 진단·수정할 때까지 파일 이름을 영문과 숫자로만 바꿔 올린다(예: `jeju2.jpg`)."
+b12_self_test:
+  a_pre_emission_grep: "grep -c 'SPEC-DEPLOY-001' CHANGELOG.md → 0"
+  b_ac_count: "acceptance.md 고유 AC-ID 21개 = AC-DEPLOY 16개 + 회귀 참조 AC-ADMIN-012, AC-APPLY-016, AC-LANDING-003·016, AC-TOUR-006. CHANGELOG 항목은 16개로 기록"
+  c_path_check: "CHANGELOG가 인용한 경로 ls 확인, 누락 0"
+changelog_entry_position: "[Unreleased] > 추가됨 첫 항목(SPEC-LANDING-001 위)"
+post_push_check: "푸시하면 새 운영 배포가 생긴다 — READY, 새 마이그레이션 적용 없음, 로그인 상태 홈 정상, 로그아웃 요청 302 확인 필요(미실시)"
+carry_over_spec_launch_001:
+  required_before_public:
+    - "F1 진단과 수정: `다운로드.jpg`, `download (1).jpg`를 각각 올려 Vercel 로그의 오류 이름 확인 뒤 수정, 한글·공백·괄호 이름 업로드 시험 포함"
+    - "Data API 두 번째 방어선: public 표 RLS 활성화 또는 anon·authenticated 권한 회수, Payload 연결 역할 영향 확인, 공개 키 요청 재시험"
+    - "72시간 보관의 실제 준수 확인(예약 실행 시점 관찰)"
+    - "L13 운영 확인 데이터 정리(본인 이메일이 든 신청 포함, test- 접두어 없음)"
+    - "Fluid compute 기준 연결 예산을 예상 트래픽으로 재검토(쉬는 인스턴스의 연결 유지 동작 미확인)"
+    - "plan.md §A.3 10번: 작업 기록 2년 보관 기준의 법률 확인"
+    - "plan.md §A.3 14번: 운영 대표 사진 크기·형식 확인"
+    - "plan.md §A.3 15번: 바닥글 처리방침 링크"
+    - "plan.md §A.3 16번: 파비콘"
+    - "plan.md §A.3 18번: 처리방침 게시, 처리 위탁·국외 이전 공개, 보호책임자, 민감정보 삭제 절차, 시행 예정 개정 확인, 변호사 최종 확인"
+    - "plan.md §A.3 19번: Vercel Hobby 비상업 한정·Supabase 무료 일시 중지에 대한 요금제 결정"
+    - "법률 검토: 72시간·2년 문구 변호사 확인"
+  not_required_before_public:
+    - "F6 루프백 판정의 ?host= 우회"
+    - "F7 Cron 초기화 실패 로그"
+    - "L0 다른 가지 배포 없음 확인"
+gaps:
+  - "운영 관찰은 사용자·오케스트레이터가 전한 내용이며 manager-docs가 직접 보지 않음"
+  - "F1 원인, PGRST002가 나온 이유, DATABASE_POOL_MAX 실제 값, §I.4 3에서 입력한 정확한 주소, L0, L13 미확인"
+  - "F12는 버킷 목록 화면의 표시까지만 확인 — 저장소 주소로 직접 요청해 보지는 않음"
+residual_risk:
+  - "Data API 차단이 토글이 아닌 다른 원인이었다면 스키마 캐시 복구 시 공개 키로 RLS 없는 표에 닿을 수 있음 — 공개 전 두 번째 방어선으로 제거"
+  - "운영자가 제한을 잊고 한글 이름을 올리면 원인 설명 없는 오류를 봄(데이터 손실 없음)"
+  - "Cron이 연속 두 번 빠지면 72시간 고지를 넘을 수 있음(R4)"
+```
 
 ## plan-audit 3회차 결과 (2026-11-17)
 

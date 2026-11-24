@@ -1,7 +1,7 @@
 # SPEC-DEPLOY-001 (compact) — 배포 기반 (로드맵 8번, 1단계)
 
 > run 단계용 요약본. 원본: `spec.md`(요구사항·용어·가정), `acceptance.md`(수용 기준), `plan.md`(근거·이월 처리·결정·마일스톤·위험·사용자 안내), `interview.md`(사용자 결정·확인 질문). 내용이 다르면 원본이 우선한다.
-> Tier M · status: draft · 문서 버전 0.1.2(2026-11-17, plan-audit 1회차 D1~D20·2회차 N1~N7 반영) · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 · 의존: INFRA·TOUR·APPLY·ADMIN·LANDING(모두 completed) · 기준 HEAD `0057e9d` · 2단계(공개 출시)는 별도 SPEC(예: SPEC-LAUNCH-001)
+> Tier M · status: completed · 문서 버전 0.1.2(2026-11-17, plan-audit 1회차 D1~D20·2회차 N1~N7 반영) · 개발 방식: TDD · 검증 셸: Windows PowerShell 5.1 · 의존: INFRA·TOUR·APPLY·ADMIN·LANDING(모두 completed) · 기준 HEAD `0057e9d` · 2단계(공개 출시)는 별도 SPEC(예: SPEC-LAUNCH-001)
 
 ## 사용자 결정 (구속)
 
